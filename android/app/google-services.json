@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1056643711862",
+    "project_id": "pemetaan-pohon-11417",
+    "storage_bucket": "pemetaan-pohon-11417.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1056643711862:android:1b8b4bf9f66e4edae03057",
+        "android_client_info": {
+          "package_name": "com.example.pemetaan_pohon"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB75WAdKhHhR15wiOe73_w0mCEkwUT600I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
