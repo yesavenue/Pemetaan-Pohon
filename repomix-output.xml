@@ -84,6 +84,7 @@ android/
   settings.gradle.kts
 assets/
   image/
+    hero_cirebon.png
     logo.png
 ios/
   Flutter/
@@ -149,6 +150,7 @@ lib/
     auth_wrapper.dart
     force_password_screen.dart
     login_screen.dart
+    public_home_screen.dart
     public_map_viewer_screen.dart
     public_pruning_request_screen.dart
     public_statistik_screen.dart
@@ -172,6 +174,8 @@ lib/
     tree_excel_export.dart
     tree_options.dart
     web_download.dart
+  widgets/
+    public_navbar.dart
   firebase_options.dart
   main.dart
 linux/
@@ -266,6 +270,7 @@ windows/
 .gitignore
 .metadata
 analysis_options.yaml
+devtools_options.yaml
 firebase.json
 pubspec.lock
 pubspec.yaml
@@ -4412,7 +4417,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../models/app_user.dart';
-import 'public_map_viewer_screen.dart';
+import 'public_home_screen.dart';
 import 'force_password_screen.dart';
 import 'admin_dashboard.dart';
 import 'surveyor_dashboard.dart';
@@ -4433,10 +4438,10 @@ class AuthWrapper extends StatelessWidget {
 
         final User? firebaseUser = snapshot.data;
 
-        // Belum login: masuk ke Public Viewer (bisa lihat peta tanpa akun).
-        // Tombol "Login" ada di menu hamburger di dalam Public Viewer itu.
+        // Belum login: masuk ke Beranda publik (bisa lihat semuanya tanpa
+        // akun). Tombol "Login" ada di navbar/hamburger menu di situ.
         if (firebaseUser == null) {
-          return const PublicMapViewerScreen();
+          return const PublicHomeScreen();
         }
 
         return FutureBuilder<AppUser?>(
@@ -4450,17 +4455,26 @@ class AuthWrapper extends StatelessWidget {
 
             if (appUser == null || !appUser.isActive) {
               authService.logout();
-              return const PublicMapViewerScreen();
+              return const PublicHomeScreen();
             }
 
-            if (appUser.requiresPasswordChange) {
-              return ForcePasswordScreen(appUser: appUser);
+            // Kalau email di Firebase Auth sudah beda dari yang tersimpan
+            // di Firestore (mis. surveyor baru saja verifikasi link ganti
+            // email), sinkronkan otomatis di sini tanpa aksi manual.
+            AppUser effectiveUser = appUser;
+            if (firebaseUser.email != null && firebaseUser.email != appUser.email) {
+              effectiveUser = appUser.copyWith(email: firebaseUser.email);
+              authService.reconcileEmail(appUser.uid, firebaseUser.email!);
             }
 
-            if (appUser.role == UserRole.admin) {
-              return AdminDashboard(adminUser: appUser);
+            if (effectiveUser.requiresPasswordChange) {
+              return ForcePasswordScreen(appUser: effectiveUser);
+            }
+
+            if (effectiveUser.role == UserRole.admin) {
+              return AdminDashboard(adminUser: effectiveUser);
             } else {
-              return SurveyorDashboard(surveyorUser: appUser);
+              return SurveyorDashboard(surveyorUser: effectiveUser);
             }
           },
         );
@@ -4606,7 +4620,6 @@ class _ForcePasswordScreenState extends State<ForcePasswordScreen> {
 
 <file path="lib/screens/login_screen.dart">
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -4619,26 +4632,31 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _resetEmailController = TextEditingController();
   final _authService = AuthService();
 
   bool _isLoading = false;
   bool _obscureText = true;
-  bool _showForgotPasswordInfo = false;
+  bool _showForgotPasswordForm = false;
+  bool _isSendingReset = false;
 
-  static const _adminWhatsAppNumber = '6281573171205'; // 081573171205 dengan kode negara
+  Future<void> _sendResetLink() async {
+    final email = _resetEmailController.text.trim();
+    if (email.isEmpty) return;
 
-  Future<void> _openWhatsAppAdmin() async {
-    const message =
-        'Halo Admin, saya Surveyor dan saya lupa password akun. '
-        'Saya ingin meminta bantuan untuk melakukan reset password.';
-    final uri = Uri.parse(
-      'https://wa.me/$_adminWhatsAppNumber?text=${Uri.encodeComponent(message)}',
-    );
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      if (!mounted) return;
+    setState(() => _isSendingReset = true);
+    final error = await _authService.sendPasswordResetEmail(email);
+    if (!mounted) return;
+    setState(() => _isSendingReset = false);
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error), backgroundColor: Colors.red));
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tidak dapat membuka WhatsApp.')),
+        SnackBar(content: Text('Link reset password telah dikirim ke $email.')),
       );
+      setState(() => _showForgotPasswordForm = false);
+      _resetEmailController.clear();
     }
   }
 
@@ -4674,6 +4692,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _resetEmailController.dispose();
     super.dispose();
   }
 
@@ -4757,11 +4776,11 @@ class _LoginScreenState extends State<LoginScreen> {
               Align(
                 alignment: Alignment.center,
                 child: TextButton(
-                  onPressed: () => setState(() => _showForgotPasswordInfo = !_showForgotPasswordInfo),
+                  onPressed: () => setState(() => _showForgotPasswordForm = !_showForgotPasswordForm),
                   child: const Text('Lupa Password?'),
                 ),
               ),
-              if (_showForgotPasswordInfo)
+              if (_showForgotPasswordForm)
                 Container(
                   padding: const EdgeInsets.all(12),
                   margin: const EdgeInsets.only(top: 4),
@@ -4773,16 +4792,32 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Column(
                     children: [
                       const Text(
-                        'Lupa password? Silakan hubungi Admin untuk mendapatkan '
-                        'bantuan reset password.',
+                        'Masukkan email akun Anda, kami akan mengirimkan link untuk membuat password baru.',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 13),
                       ),
                       const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: _openWhatsAppAdmin,
-                        icon: const Icon(Icons.chat, size: 18, color: Colors.green),
-                        label: const Text('Hubungi Admin via WhatsApp'),
+                      TextField(
+                        controller: _resetEmailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _isSendingReset ? null : _sendResetLink,
+                          child: _isSendingReset
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Text('Kirim Link Reset'),
+                        ),
                       ),
                     ],
                   ),
@@ -4790,6 +4825,420 @@ class _LoginScreenState extends State<LoginScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+</file>
+
+<file path="lib/screens/public_home_screen.dart">
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
+import 'package:latlong2/latlong.dart';
+
+import '../models/tree_data.dart';
+import '../services/tree_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/branding.dart';
+import '../utils/tree_condition_style.dart';
+import '../widgets/public_navbar.dart';
+
+class PublicHomeScreen extends StatelessWidget {
+  const PublicHomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: const PublicNavbar(currentPage: PublicPage.beranda),
+      drawer: const PublicNavDrawer(currentPage: PublicPage.beranda),
+      body: StreamBuilder<List<TreeData>>(
+        stream: TreeService().streamTrees(),
+        builder: (context, snapshot) {
+          final trees =
+              (snapshot.data ?? []).where((t) => t.status == TreeStatus.verified).toList();
+          final total = trees.length;
+          final sehat = trees.where((t) => t.condition == TreeCondition.sehat).length;
+          final sakit = trees.where((t) => t.condition == TreeCondition.sakit).length;
+          final rawan = trees.where((t) => t.condition == TreeCondition.rawanTumbang).length;
+
+          return ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              _HeroSection(),
+              _StatsStrip(total: total, sehat: sehat, sakit: sakit, rawan: rawan),
+              const _AboutSection(),
+              const _FeatureSection(),
+              _MapPreviewSection(trees: trees),
+              const _CtaSection(),
+              const _Footer(),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _HeroSection extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.of(context).size.width > 800;
+    return Stack(
+      children: [
+        SizedBox(
+          height: isWide ? 420 : 480,
+          width: double.infinity,
+          child: Image.asset('assets/image/hero_cirebon.png', fit: BoxFit.cover),
+        ),
+        Container(
+          height: isWide ? 420 : 480,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [Color(0xE60B3554), Color(0x800B3554), Color(0x330B3554)],
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: isWide ? 64 : 24, vertical: 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'RUANG HIJAU, KOTA LEBIH BAIK',
+                  style: TextStyle(
+                    color: AppColors.gold,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Pemetaan Pohon\nKota Cirebon',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: isWide ? 44 : 32,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  child: const Text(
+                    'Platform informasi dan pemetaan pohon untuk mendukung pengelolaan '
+                    'ruang hijau serta meningkatkan kepedulian masyarakat terhadap '
+                    'lingkungan Kota Cirebon.',
+                    style: TextStyle(color: Colors.white70, fontSize: 15, height: 1.5),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: AppColors.leaf),
+                      onPressed: () => navigateToPublicPage(
+                          context, PublicPage.peta, PublicPage.beranda),
+                      icon: const Icon(Icons.map_outlined),
+                      label: const Text('Jelajahi Peta'),
+                    ),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white70),
+                      ),
+                      onPressed: () => navigateToPublicPage(
+                          context, PublicPage.permohonan, PublicPage.beranda),
+                      icon: const Icon(Icons.description_outlined),
+                      label: const Text('Ajukan Permohonan'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatsStrip extends StatelessWidget {
+  final int total, sehat, sakit, rawan;
+  const _StatsStrip({required this.total, required this.sehat, required this.sakit, required this.rawan});
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.translate(
+      offset: const Offset(0, -32),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 16, offset: Offset(0, 6))],
+          ),
+          child: Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            children: [
+              _StatCard(icon: Icons.park, color: AppColors.navy, label: 'Total Pohon', value: total),
+              _StatCard(icon: Icons.check_circle, color: AppColors.sehat, label: 'Sehat', value: sehat),
+              _StatCard(icon: Icons.warning_amber_rounded, color: AppColors.sakit, label: 'Sakit', value: sakit),
+              _StatCard(
+                  icon: Icons.error_outline, color: AppColors.rawanTumbang, label: 'Rawan Tumbang', value: rawan),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final int value;
+  const _StatCard({required this.icon, required this.color, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 190,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 28),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('$value', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AboutSection extends StatelessWidget {
+  const _AboutSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Tentang Pemetaan Pohon',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.navy)),
+            const SizedBox(height: 12),
+            Text(
+              'Sistem ini digunakan untuk mendata, memetakan, dan memantau kondisi pohon '
+              'di wilayah Kota Cirebon secara digital. Petugas survei mencatat lokasi, jenis, '
+              'dan kondisi kesehatan tiap pohon dari lapangan, yang kemudian diverifikasi oleh '
+              'admin sebelum ditampilkan kepada masyarakat melalui $appSystemName.',
+              style: const TextStyle(fontSize: 14, height: 1.6, color: Colors.black87),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeatureSection extends StatelessWidget {
+  const _FeatureSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final features = [
+      (Icons.map_outlined, 'Peta Interaktif', 'Jelajahi peta interaktif untuk melihat lokasi, jenis, dan kondisi pohon di Kota Cirebon.', PublicPage.peta),
+      (Icons.bar_chart_outlined, 'Data Pohon', 'Lihat sebaran dan statistik pohon secara real-time.', PublicPage.statistik),
+      (Icons.content_cut_outlined, 'Permohonan Perapihan', 'Laporkan pohon yang perlu dirapikan kepada DPRKP Kota Cirebon.', PublicPage.permohonan),
+      (Icons.eco_outlined, 'Informasi Lingkungan', 'Untuk masyarakat yang lebih peduli lingkungan Kota Cirebon.', PublicPage.tentang),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        children: features.map((f) {
+          return SizedBox(
+            width: 260,
+            child: Card(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => navigateToPublicPage(context, f.$4, PublicPage.beranda),
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(f.$1, color: AppColors.leaf, size: 30),
+                      const SizedBox(height: 12),
+                      Text(f.$2, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                      const SizedBox(height: 6),
+                      Text(f.$3, style: const TextStyle(fontSize: 12.5, color: Colors.black54, height: 1.4)),
+                      const SizedBox(height: 10),
+                      const Row(
+                        children: [
+                          Text('Lihat', style: TextStyle(color: AppColors.leaf, fontWeight: FontWeight.w600, fontSize: 12)),
+                          SizedBox(width: 4),
+                          Icon(Icons.arrow_forward, size: 14, color: AppColors.leaf),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _MapPreviewSection extends StatelessWidget {
+  final List<TreeData> trees;
+  const _MapPreviewSection({required this.trees});
+
+  @override
+  Widget build(BuildContext context) {
+    final center = trees.isEmpty
+        ? const LatLng(-6.7063, 108.5571)
+        : LatLng(
+            trees.map((t) => t.latitude).reduce((a, b) => a + b) / trees.length,
+            trees.map((t) => t.longitude).reduce((a, b) => a + b) / trees.length,
+          );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Sebaran Pohon',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.navy)),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: SizedBox(
+              height: 320,
+              child: Stack(
+                children: [
+                  FlutterMap(
+                    options: MapOptions(initialCenter: center, initialZoom: trees.isEmpty ? 12 : 13),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.pemetaanpohon.app',
+                      ),
+                      MarkerClusterLayerWidget(
+                        options: MarkerClusterLayerOptions(
+                          maxClusterRadius: 50,
+                          size: const Size(40, 40),
+                          markers: trees
+                              .map((t) => Marker(
+                                    point: LatLng(t.latitude, t.longitude),
+                                    width: 30,
+                                    height: 30,
+                                    child: Icon(Icons.location_on, color: treeConditionColor(t.condition), size: 26),
+                                  ))
+                              .toList(),
+                          builder: (context, markers) => CircleAvatar(
+                            backgroundColor: AppColors.navy,
+                            child: Text('${markers.length}', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Positioned(
+                    right: 12,
+                    bottom: 12,
+                    child: FilledButton.icon(
+                      onPressed: () => navigateToPublicPage(context, PublicPage.peta, PublicPage.beranda),
+                      icon: const Icon(Icons.open_in_full, size: 16),
+                      label: const Text('Lihat Peta Lengkap'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CtaSection extends StatelessWidget {
+  const _CtaSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        children: [
+          const Text('Menemukan pohon yang perlu dirapikan?',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.leaf),
+            onPressed: () => navigateToPublicPage(context, PublicPage.permohonan, PublicPage.beranda),
+            icon: const Icon(Icons.description_outlined),
+            label: const Text('Ajukan Permohonan'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Footer extends StatelessWidget {
+  const _Footer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: AppColors.navyDark,
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 24),
+      child: Column(
+        children: [
+          const Text(appSystemName,
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          const Text(appInstansiUnit, style: TextStyle(color: Colors.white54, fontSize: 12)),
+          const SizedBox(height: 8),
+          Text('$appContactEmail · $appContactPhone',
+              style: const TextStyle(color: Colors.white38, fontSize: 11)),
+        ],
       ),
     );
   }
@@ -4807,13 +5256,9 @@ import 'package:latlong2/latlong.dart';
 
 import '../models/tree_data.dart';
 import '../services/tree_service.dart';
-import '../utils/branding.dart';
 import '../utils/cirebon_regions.dart';
 import '../utils/tree_condition_style.dart';
-import 'login_screen.dart';
-import 'public_pruning_request_screen.dart';
-import 'public_statistik_screen.dart';
-import 'public_tentang_screen.dart';
+import '../widgets/public_navbar.dart';
 
 // Kumpulan semua kriteria filter peta publik dalam satu objek, supaya
 // gampang dibawa masuk-keluar panel modal (edit di panel, baru
@@ -4878,38 +5323,9 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 12,
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: Image.asset(
-                appLogoAsset,
-                width: 32,
-                height: 32,
-                errorBuilder: (context, error, stackTrace) =>
-                    const Icon(Icons.location_city, size: 32, color: Colors.white),
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'PEMERINTAH KOTA CIREBON',
-                  style: TextStyle(fontSize: 10, color: Colors.white70, letterSpacing: 0.5),
-                ),
-                Text(
-                  'Pemetaan Pohon',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
+      appBar: PublicNavbar(
+        currentPage: PublicPage.peta,
+        extraActions: [
           Badge(
             label: Text('${_filters.activeCount}'),
             isLabelVisible: _filters.activeCount > 0,
@@ -4919,92 +5335,9 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen> {
               onPressed: () => _openFilterSheet(context),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12, left: 4),
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.white54),
-              ),
-              onPressed: () => showDialog(
-                context: context,
-                builder: (_) => const LoginScreen(),
-              ),
-              icon: const Icon(Icons.login, size: 18),
-              label: const Text('Login'),
-            ),
-          ),
         ],
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: Image.asset(
-                      appLogoAsset,
-                      width: 48,
-                      height: 48,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.location_city, size: 48, color: Colors.white),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Pemetaan Pohon\nKota Cirebon',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.home_outlined),
-              title: const Text('Beranda / Peta Pohon'),
-              onTap: () => Navigator.pop(context),
-            ),
-            ListTile(
-              leading: const Icon(Icons.bar_chart_outlined),
-              title: const Text('Statistik'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const PublicStatistikScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.content_cut_outlined),
-              title: const Text('Permohonan Perapihan Pohon'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const PublicPruningRequestScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('Tentang'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const PublicTentangScreen()),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
+      drawer: const PublicNavDrawer(currentPage: PublicPage.peta),
       body: StreamBuilder<List<TreeData>>(
         stream: _treeService.streamTrees(),
         builder: (context, snapshot) {
@@ -6385,6 +6718,8 @@ class _ContactRow extends StatelessWidget {
 </file>
 
 <file path="lib/screens/surveyor_dashboard.dart">
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
@@ -6393,7 +6728,7 @@ import '../theme/app_theme.dart';
 import 'surveyor_profile_screen.dart';
 import 'tree_input_screen.dart';
 
-class SurveyorDashboard extends StatelessWidget {
+class SurveyorDashboard extends StatefulWidget {
   final AppUser surveyorUser;
 
   const SurveyorDashboard({
@@ -6402,9 +6737,67 @@ class SurveyorDashboard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final authService = AuthService();
+  State<SurveyorDashboard> createState() => _SurveyorDashboardState();
+}
 
+class _SurveyorDashboardState extends State<SurveyorDashboard> {
+  final _authService = AuthService();
+  String? _mySessionId;
+  StreamSubscription<String?>? _sessionSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _registerSession();
+  }
+
+  // Setiap kali dashboard ini dibuka (login baru ATAU sekadar refresh
+  // halaman), device/tab ini "mengklaim" jadi sesi aktif. Kalau nanti
+  // ada device/tab lain yang login dan mengklaim ulang, listener di
+  // bawah akan mendeteksi perubahan dan logout otomatis di sini.
+  Future<void> _registerSession() async {
+    final sessionId = await _authService.registerDeviceSession(widget.surveyorUser.uid);
+    if (!mounted) return;
+    _mySessionId = sessionId;
+
+    _sessionSub = _authService.watchActiveSessionId(widget.surveyorUser.uid).listen((remoteId) {
+      if (_mySessionId != null && remoteId != null && remoteId != _mySessionId) {
+        _handleKickedOut();
+      }
+    });
+  }
+
+  Future<void> _handleKickedOut() async {
+    _sessionSub?.cancel();
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Sesi Berakhir'),
+        content: const Text(
+          'Akun ini baru saja login di perangkat/tab lain. Anda akan keluar dari sesi ini.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Mengerti'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    await _authService.logout();
+  }
+
+  @override
+  void dispose() {
+    _sessionSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pemetaan Pohon'),
@@ -6415,7 +6808,7 @@ class SurveyorDashboard extends StatelessWidget {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => SurveyorProfileScreen(surveyorUser: surveyorUser)),
+                MaterialPageRoute(builder: (_) => SurveyorProfileScreen(surveyorUser: widget.surveyorUser)),
               );
             },
           ),
@@ -6423,7 +6816,7 @@ class SurveyorDashboard extends StatelessWidget {
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
             onPressed: () async {
-              await authService.logout();
+              await _authService.logout();
             },
           ),
         ],
@@ -6444,7 +6837,7 @@ class SurveyorDashboard extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              'Selamat bertugas, ${surveyorUser.name}!',
+              'Selamat bertugas, ${widget.surveyorUser.name}!',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
@@ -6463,7 +6856,7 @@ class SurveyorDashboard extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => TreeInputScreen(surveyorUser: surveyorUser),
+                      builder: (_) => TreeInputScreen(surveyorUser: widget.surveyorUser),
                     ),
                   );
                 },
@@ -6500,75 +6893,287 @@ class SurveyorProfileScreen extends StatefulWidget {
 class _SurveyorProfileScreenState extends State<SurveyorProfileScreen> {
   final _authService = AuthService();
   late final _nameController = TextEditingController(text: widget.surveyorUser.name);
-  bool _isSaving = false;
+  bool _isSavingName = false;
 
-  Future<void> _save() async {
+  Future<void> _saveName() async {
     final newName = _nameController.text.trim();
     if (newName.isEmpty) return;
 
-    setState(() => _isSaving = true);
+    setState(() => _isSavingName = true);
     final error = await _authService.updateSurveyorName(widget.surveyorUser.uid, newName);
     if (!mounted) return;
-    setState(() => _isSaving = false);
+    setState(() => _isSavingName = false);
 
     if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error), backgroundColor: Colors.red));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        // Perubahan ini otomatis muncul di tabel Data Surveyor Admin
-        // karena keduanya membaca dokumen Firestore yang sama secara
-        // real-time (StreamBuilder) — tidak perlu sinkronisasi manual.
-        const SnackBar(content: Text('Profil diperbarui.'), backgroundColor: Colors.green),
+        const SnackBar(content: Text('Nama diperbarui.'), backgroundColor: Colors.green),
       );
     }
+  }
+
+  void _showChangeEmailDialog() {
+    final newEmailController = TextEditingController();
+    final passwordController = TextEditingController();
+    bool obscure = true;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Ganti Email'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Email saat ini: ${widget.surveyorUser.email}',
+                      style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: newEmailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: 'Email Baru'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: obscure,
+                    decoration: InputDecoration(
+                      labelText: 'Password Saat Ini',
+                      helperText: 'Diperlukan untuk konfirmasi keamanan',
+                      suffixIcon: IconButton(
+                        icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
+                        onPressed: () => setDialogState(() => obscure = !obscure),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Link verifikasi akan dikirim ke email baru. Email lama tetap dipakai '
+                    'untuk login sampai Anda mengklik link tersebut.',
+                    style: TextStyle(fontSize: 11, color: Colors.black45),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(context),
+                  child: const Text('Batal'),
+                ),
+                FilledButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final newEmail = newEmailController.text.trim();
+                          final password = passwordController.text;
+                          if (newEmail.isEmpty || password.isEmpty) return;
+
+                          setDialogState(() => isSaving = true);
+                          final error = await _authService.requestEmailChange(
+                            newEmail: newEmail,
+                            currentPassword: password,
+                          );
+                          if (!context.mounted) return;
+                          setDialogState(() => isSaving = false);
+
+                          if (error != null) {
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(SnackBar(content: Text(error), backgroundColor: Colors.red));
+                          } else {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Link verifikasi dikirim ke $newEmail. Cek email tersebut.'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 18, height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Kirim Verifikasi'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showChangePasswordDialog() {
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Ganti Password'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: currentController,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Password Saat Ini'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: newController,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Password Baru', helperText: 'Minimal 6 karakter'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmController,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Konfirmasi Password Baru'),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(context),
+                  child: const Text('Batal'),
+                ),
+                FilledButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          final current = currentController.text;
+                          final newPass = newController.text;
+                          final confirm = confirmController.text;
+
+                          if (current.isEmpty || newPass.isEmpty) return;
+                          if (newPass.length < 6) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Password baru minimal 6 karakter.')),
+                            );
+                            return;
+                          }
+                          if (newPass != confirm) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Konfirmasi password tidak cocok.')),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isSaving = true);
+                          final error = await _authService.updateOwnPassword(
+                            currentPassword: current,
+                            newPassword: newPass,
+                          );
+                          if (!context.mounted) return;
+                          setDialogState(() => isSaving = false);
+
+                          if (error != null) {
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(SnackBar(content: Text(error), backgroundColor: Colors.red));
+                          } else {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Password berhasil diubah.'), backgroundColor: Colors.green),
+                            );
+                          }
+                        },
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 18, height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Simpan'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Profile Saya')),
-      body: Padding(
+      body: ListView(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(color: AppColors.leaf.withValues(alpha: 0.12), shape: BoxShape.circle),
-                child: const Icon(Icons.person, size: 44, color: AppColors.leaf),
+        children: [
+          Center(
+            child: Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(color: AppColors.leaf.withValues(alpha: 0.12), shape: BoxShape.circle),
+              child: const Icon(Icons.person, size: 44, color: AppColors.leaf),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Nama Lengkap', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _isSavingName ? null : _saveName,
+                      child: _isSavingName
+                          ? const SizedBox(
+                              width: 18, height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Text('Simpan Nama'),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 24),
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Nama Lengkap', border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              enabled: false,
-              controller: TextEditingController(text: widget.surveyorUser.email),
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                helperText: 'Email tidak bisa diubah di sini karena terhubung ke akun login.',
-                border: OutlineInputBorder(),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Email & Keamanan', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  const SizedBox(height: 10),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.email_outlined),
+                    title: Text(widget.surveyorUser.email),
+                    subtitle: const Text('Email login saat ini', style: TextStyle(fontSize: 11)),
+                    trailing: TextButton(onPressed: _showChangeEmailDialog, child: const Text('Ganti')),
+                  ),
+                  const Divider(),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.lock_outline),
+                    title: const Text('Password'),
+                    subtitle: const Text('••••••••', style: TextStyle(fontSize: 11)),
+                    trailing: TextButton(onPressed: _showChangePasswordDialog, child: const Text('Ganti')),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 24),
-            SizedBox(
-              height: 52,
-              child: FilledButton(
-                onPressed: _isSaving ? null : _save,
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 20, height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Simpan Perubahan'),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -7257,6 +7862,8 @@ class _BigButton extends StatelessWidget {
 </file>
 
 <file path="lib/services/auth_service.dart">
+import 'dart:math';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7410,6 +8017,84 @@ class AuthService {
       return null;
     } on FirebaseAuthException catch (e) {
       return e.message ?? 'Gagal mengirim email reset password';
+    }
+  }
+
+  // Mengganti password akun SENDIRI (beda dari reset password admin untuk
+  // orang lain — ini diizinkan Firebase karena user mengubah akunnya
+  // sendiri). Perlu re-autentikasi dulu (masukkan password lama) karena
+  // Firebase mewajibkan sesi login yang masih "segar" untuk aksi sensitif.
+  Future<String?> updateOwnPassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null || user.email == null) return 'Sesi tidak ditemukan. Silakan login ulang.';
+      final cred = EmailAuthProvider.credential(email: user.email!, password: currentPassword);
+      await user.reauthenticateWithCredential(cred);
+      await user.updatePassword(newPassword);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? 'Gagal mengganti password';
+    }
+  }
+
+  // Mengganti email akun SENDIRI. Firebase modern mewajibkan verifikasi
+  // ke email BARU dulu (klik link) sebelum email benar-benar berubah —
+  // jadi ini TIDAK langsung mengubah email saat ini, cuma mengirim link
+  // konfirmasi. Firestore baru disinkronkan otomatis setelah verifikasi
+  // selesai (lihat pengecekan di AuthWrapper).
+  Future<String?> requestEmailChange({
+    required String newEmail,
+    required String currentPassword,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null || user.email == null) return 'Sesi tidak ditemukan. Silakan login ulang.';
+      final cred = EmailAuthProvider.credential(email: user.email!, password: currentPassword);
+      await user.reauthenticateWithCredential(cred);
+      await user.verifyBeforeUpdateEmail(newEmail);
+      return null;
+    } on FirebaseAuthException catch (e) {
+      return e.message ?? 'Gagal mengirim verifikasi email baru';
+    }
+  }
+
+  // ---- Single-device session untuk Surveyor ----
+  // Setiap kali surveyor login/membuka dashboard, dibuat "tiket sesi"
+  // acak dan ditulis ke Firestore. Device/tab lain yang sedang aktif
+  // memantau field ini; begitu nilainya berubah (berarti ada login baru
+  // di tempat lain), device lama otomatis logout. Ini penegakan dari
+  // sisi aplikasi (Firestore + listener), BUKAN pencabutan token di
+  // level server — untuk itu perlu Cloud Function dengan Admin SDK.
+  String _generateSessionId() {
+    final rand = Random();
+    return '${DateTime.now().millisecondsSinceEpoch}-${rand.nextInt(999999)}';
+  }
+
+  Future<String> registerDeviceSession(String uid) async {
+    final sessionId = _generateSessionId();
+    await _firestore.collection('users').doc(uid).update({'activeSessionId': sessionId});
+    return sessionId;
+  }
+
+  Stream<String?> watchActiveSessionId(String uid) {
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .map((doc) => doc.data()?['activeSessionId'] as String?);
+  }
+
+  // Dipanggil otomatis oleh AuthWrapper saat mendeteksi email Firebase
+  // Auth sudah berubah (surveyor baru verifikasi ganti email) tapi
+  // Firestore belum tahu — menyamakan keduanya secara diam-diam.
+  Future<void> reconcileEmail(String uid, String currentAuthEmail) async {
+    try {
+      await _firestore.collection('users').doc(uid).update({'email': currentAuthEmail});
+    } catch (_) {
+      // Gagal sinkron di sini tidak fatal — akan dicoba lagi di sesi berikutnya.
     }
   }
 
@@ -7569,15 +8254,26 @@ class TreeService {
 
 <file path="lib/theme/app_theme.dart">
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-/// Palet resmi aplikasi: biru institusi (navigasi/AppBar) dipadu hijau
-/// pohon (aksi utama, status "Sehat") — supaya terasa seperti web GIS
-/// pemerintahan, bukan aplikasi CRUD generik.
+/// Palet resmi "Modern Government GIS" — navy sebagai identitas
+/// kedinasan, hijau sebagai aksen lingkungan (bukan warna dominan),
+/// gold sebagai aksen sekunder tipis.
 class AppColors {
-  static const navy = Color(0xFF0B3D63);
-  static const navyDark = Color(0xFF082C48);
-  static const leaf = Color(0xFF2E7D32);
-  static const paper = Color(0xFFF6F7F9);
+  static const navy = Color(0xFF0B3554);
+  static const navyDark = Color(0xFF082943);
+  static const leaf = Color(0xFF2E7D5B);
+  static const background = Color(0xFFF5F7F8);
+  static const white = Color(0xFFFFFFFF);
+  static const gold = Color(0xFFD6B45A);
+
+  // Warna status kondisi pohon.
+  static const sehat = Color(0xFF2E9B68);
+  static const sakit = Color(0xFFF2A33A);
+  static const rawanTumbang = Color(0xFFE05252);
+
+  // Alias supaya kode lama yang masih memakai nama "paper" tetap jalan.
+  static const paper = background;
 }
 
 ThemeData buildAppTheme() {
@@ -7588,16 +8284,19 @@ ThemeData buildAppTheme() {
     brightness: Brightness.light,
   );
 
+  final baseTextTheme = GoogleFonts.interTextTheme();
+
   return ThemeData(
     useMaterial3: true,
     colorScheme: colorScheme,
-    scaffoldBackgroundColor: AppColors.paper,
-    appBarTheme: const AppBarTheme(
+    scaffoldBackgroundColor: AppColors.background,
+    textTheme: baseTextTheme,
+    appBarTheme: AppBarTheme(
       backgroundColor: AppColors.navy,
       foregroundColor: Colors.white,
       elevation: 0,
       centerTitle: false,
-      titleTextStyle: TextStyle(
+      titleTextStyle: GoogleFonts.inter(
         color: Colors.white,
         fontSize: 17,
         fontWeight: FontWeight.w600,
@@ -7607,7 +8306,7 @@ ThemeData buildAppTheme() {
       backgroundColor: Colors.white,
     ),
     inputDecorationTheme: InputDecorationTheme(
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       filled: true,
       fillColor: Colors.white,
     ),
@@ -7615,21 +8314,21 @@ ThemeData buildAppTheme() {
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.navy,
         foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.leaf,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.navy,
         side: const BorderSide(color: AppColors.navy),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     navigationRailTheme: const NavigationRailThemeData(
@@ -7640,7 +8339,7 @@ ThemeData buildAppTheme() {
     cardTheme: CardThemeData(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         side: const BorderSide(color: Colors.black12),
       ),
     ),
@@ -7989,15 +8688,16 @@ $bodyParagraphs
 <file path="lib/utils/tree_condition_style.dart">
 import 'package:flutter/material.dart';
 import '../models/tree_data.dart';
+import '../theme/app_theme.dart';
 
 Color treeConditionColor(TreeCondition condition) {
   switch (condition) {
     case TreeCondition.sehat:
-      return Colors.green;
+      return AppColors.sehat;
     case TreeCondition.sakit:
-      return Colors.orange;
+      return AppColors.sakit;
     case TreeCondition.rawanTumbang:
-      return Colors.red;
+      return AppColors.rawanTumbang;
   }
 }
 </file>
@@ -8144,6 +8844,229 @@ void downloadBytesAsFile(Uint8List bytes, String filename, {String? mimeType}) {
     return (extension: 'webp', mimeType: 'image/webp');
   }
   return (extension: 'jpg', mimeType: 'image/jpeg'); // fallback wajar
+}
+</file>
+
+<file path="lib/widgets/public_navbar.dart">
+import 'package:flutter/material.dart';
+
+import '../screens/login_screen.dart';
+import '../screens/public_home_screen.dart';
+import '../screens/public_map_viewer_screen.dart';
+import '../screens/public_pruning_request_screen.dart';
+import '../screens/public_statistik_screen.dart';
+import '../screens/public_tentang_screen.dart';
+import '../theme/app_theme.dart';
+import '../utils/branding.dart';
+
+enum PublicPage { beranda, peta, statistik, permohonan, tentang }
+
+String _labelFor(PublicPage page) {
+  switch (page) {
+    case PublicPage.beranda:
+      return 'Beranda';
+    case PublicPage.peta:
+      return 'Peta Pohon';
+    case PublicPage.statistik:
+      return 'Statistik';
+    case PublicPage.permohonan:
+      return 'Permohonan';
+    case PublicPage.tentang:
+      return 'Tentang';
+  }
+}
+
+void navigateToPublicPage(BuildContext context, PublicPage page, PublicPage current) {
+  if (page == current) return;
+  Widget target;
+  switch (page) {
+    case PublicPage.beranda:
+      target = const PublicHomeScreen();
+      break;
+    case PublicPage.peta:
+      target = const PublicMapViewerScreen();
+      break;
+    case PublicPage.statistik:
+      target = const PublicStatistikScreen();
+      break;
+    case PublicPage.permohonan:
+      target = const PublicPruningRequestScreen();
+      break;
+    case PublicPage.tentang:
+      target = const PublicTentangScreen();
+      break;
+  }
+  Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => target));
+}
+
+/// Navbar modern yang dipakai bersama di semua halaman publik, supaya
+/// tampilan & menu aktif konsisten tanpa menduplikasi kode di tiap layar.
+class PublicNavbar extends StatelessWidget implements PreferredSizeWidget {
+  final PublicPage currentPage;
+  final List<Widget> extraActions;
+  const PublicNavbar({super.key, required this.currentPage, this.extraActions = const []});
+
+  @override
+  Size get preferredSize => const Size.fromHeight(68);
+
+  @override
+  Widget build(BuildContext context) {
+    final isWide = MediaQuery.of(context).size.width > 900;
+
+    return AppBar(
+      backgroundColor: Colors.white,
+      foregroundColor: AppColors.navy,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      shape: const Border(bottom: BorderSide(color: Colors.black12, width: 1)),
+      titleSpacing: 16,
+      title: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Image.asset(
+              appLogoAsset,
+              width: 38,
+              height: 38,
+              errorBuilder: (context, error, stackTrace) =>
+                  const Icon(Icons.location_city, color: AppColors.navy, size: 38),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Pemetaan Pohon',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.navy)),
+              Text('Kota Cirebon', style: TextStyle(fontSize: 11, color: Colors.black54)),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        if (isWide)
+          ...PublicPage.values.map((p) => _NavItem(
+                label: _labelFor(p),
+                active: p == currentPage,
+                onTap: () => navigateToPublicPage(context, p, currentPage),
+              )),
+        if (isWide) const SizedBox(width: 4),
+        ...extraActions,
+        IconButton(
+          icon: const Icon(Icons.search),
+          tooltip: 'Cari',
+          onPressed: () {
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(content: Text('Fitur pencarian akan segera hadir.')));
+          },
+        ),
+        Padding(
+          padding: const EdgeInsets.only(right: 12, left: 4),
+          child: OutlinedButton.icon(
+            onPressed: () => showDialog(context: context, builder: (_) => const LoginScreen()),
+            icon: const Icon(Icons.login, size: 16),
+            label: const Text('Login'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _NavItem({required this.label, required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        foregroundColor: active ? AppColors.leaf : AppColors.navy,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: TextStyle(fontWeight: active ? FontWeight.w700 : FontWeight.w500)),
+          const SizedBox(height: 2),
+          Container(height: 2, width: 20, color: active ? AppColors.leaf : Colors.transparent),
+        ],
+      ),
+    );
+  }
+}
+
+/// Drawer pendamping untuk layar sempit (mobile web), isinya sama
+/// dengan menu navbar supaya tidak ada navigasi yang beda/duplikat.
+class PublicNavDrawer extends StatelessWidget {
+  final PublicPage currentPage;
+  const PublicNavDrawer({super.key, required this.currentPage});
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: const BoxDecoration(color: AppColors.navy),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.asset(
+                    appLogoAsset,
+                    width: 48,
+                    height: 48,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Icon(Icons.location_city, size: 48, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text('Pemetaan Pohon\nKota Cirebon',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          ...PublicPage.values.map((p) => ListTile(
+                leading: Icon(_iconFor(p), color: p == currentPage ? AppColors.leaf : null),
+                title: Text(
+                  _labelFor(p),
+                  style: TextStyle(
+                    color: p == currentPage ? AppColors.leaf : null,
+                    fontWeight: p == currentPage ? FontWeight.w700 : FontWeight.normal,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  navigateToPublicPage(context, p, currentPage);
+                },
+              )),
+        ],
+      ),
+    );
+  }
+
+  IconData _iconFor(PublicPage page) {
+    switch (page) {
+      case PublicPage.beranda:
+        return Icons.home_outlined;
+      case PublicPage.peta:
+        return Icons.map_outlined;
+      case PublicPage.statistik:
+        return Icons.bar_chart_outlined;
+      case PublicPage.permohonan:
+        return Icons.content_cut_outlined;
+      case PublicPage.tentang:
+        return Icons.info_outline;
+    }
+  }
 }
 </file>
 
@@ -11581,6 +12504,12 @@ linter:
 # https://dart.dev/guides/language/analysis-options
 </file>
 
+<file path="devtools_options.yaml">
+description: This file stores settings for Dart & Flutter DevTools.
+documentation: https://docs.flutter.dev/tools/devtools/extensions#configure-extension-enablement-states
+extensions:
+</file>
+
 <file path="firebase.json">
 {"flutter":{"platforms":{"android":{"default":{"projectId":"pemetaan-pohon-11417","appId":"1:1056643711862:android:1b8b4bf9f66e4edae03057","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"pemetaan-pohon-11417","configurations":{"android":"1:1056643711862:android:1b8b4bf9f66e4edae03057","ios":"1:1056643711862:ios:d904a99371dab4a7e03057","macos":"1:1056643711862:ios:d904a99371dab4a7e03057","web":"1:1056643711862:web:a3f8e657fa250bbae03057","windows":"1:1056643711862:web:b33583604dacc1f3e03057"}}}}}}
 </file>
@@ -11980,6 +12909,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.5"
+  google_fonts:
+    dependency: "direct main"
+    description:
+      name: google_fonts
+      sha256: "517b20870220c48752eafa0ba1a797a092fb22df0d89535fd9991e86ee2cdd9c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.3.2"
   gsettings:
     dependency: transitive
     description:
@@ -12512,6 +13449,7 @@ dependencies:
   web: ^1.1.1
   archive: ^3.6.1
   url_launcher: ^6.3.2
+  google_fonts: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -12521,10 +13459,12 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/image/hero_cirebon.png
     - assets/image/logo.png
 </file>
 
 <file path="README.md">
+<<<<<<< HEAD
 # pemetaan_pohon
 
 A new Flutter project.
@@ -12541,6 +13481,10 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+=======
+# Pemetaan-Pohon
+Aplikasi untuk memetakan pohon yang ada di cirebon
+>>>>>>> 81a3de850bd89be21f0161e37f174dd6e6cb0865
 </file>
 
 </files>

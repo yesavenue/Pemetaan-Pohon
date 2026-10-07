@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/public_navbar.dart';
 
 import '../theme/app_theme.dart';
 import '../utils/branding.dart';
@@ -9,8 +10,8 @@ class PublicTentangScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Tentang Sistem')),
+    return PublicScaffold(
+      currentPage: PublicPage.tentang,
       body: ListView(
         padding: EdgeInsets.zero,
         children: [
@@ -26,15 +27,22 @@ class PublicTentangScreen extends StatelessWidget {
                     appLogoAsset,
                     width: 64,
                     height: 64,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.location_city, size: 64, color: Colors.white),
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                      Icons.location_city,
+                      size: 64,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 const Text(
                   appSystemName,
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 const Text(
@@ -67,11 +75,21 @@ class PublicTentangScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
-                      _BulletPoint('Menyediakan data sebaran pohon yang akurat dan mutakhir.'),
-                      _BulletPoint('Memantau kondisi kesehatan pohon secara berkala.'),
-                      _BulletPoint('Mendukung mitigasi risiko pohon rawan tumbang bagi keselamatan warga.'),
-                      _BulletPoint('Menjadi dasar perencanaan perawatan dan penanaman pohon kota.'),
-                      _BulletPoint('Memberikan akses informasi terbuka kepada masyarakat.'),
+                      _BulletPoint(
+                        'Menyediakan data sebaran pohon yang akurat dan mutakhir.',
+                      ),
+                      _BulletPoint(
+                        'Memantau kondisi kesehatan pohon secara berkala.',
+                      ),
+                      _BulletPoint(
+                        'Mendukung mitigasi risiko pohon rawan tumbang bagi keselamatan warga.',
+                      ),
+                      _BulletPoint(
+                        'Menjadi dasar perencanaan perawatan dan penanaman pohon kota.',
+                      ),
+                      _BulletPoint(
+                        'Memberikan akses informasi terbuka kepada masyarakat.',
+                      ),
                     ],
                   ),
                 ),
@@ -94,12 +112,18 @@ class PublicTentangScreen extends StatelessWidget {
                             children: [
                               Text(
                                 'Kec. ${entry.key}',
-                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
                               ),
                               const SizedBox(height: 2),
                               Text(
                                 entry.value.join(', '),
-                                style: const TextStyle(fontSize: 13, color: Colors.black54),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black54,
+                                ),
                               ),
                             ],
                           ),
@@ -114,11 +138,20 @@ class PublicTentangScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
-                      _ContactRow(icon: Icons.email_outlined, text: appContactEmail),
+                      _ContactRow(
+                        icon: Icons.email_outlined,
+                        text: appContactEmail,
+                      ),
                       SizedBox(height: 8),
-                      _ContactRow(icon: Icons.phone_outlined, text: appContactPhone),
+                      _ContactRow(
+                        icon: Icons.phone_outlined,
+                        text: appContactPhone,
+                      ),
                       SizedBox(height: 8),
-                      _ContactRow(icon: Icons.location_on_outlined, text: appContactAddress),
+                      _ContactRow(
+                        icon: Icons.location_on_outlined,
+                        text: appContactAddress,
+                      ),
                     ],
                   ),
                 ),
@@ -149,7 +182,10 @@ class _InfoCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+          ),
           const SizedBox(height: 10),
           child,
         ],
@@ -170,7 +206,12 @@ class _BulletPoint extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('•  ', style: TextStyle(fontSize: 14)),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 14, height: 1.4))),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 14, height: 1.4),
+            ),
+          ),
         ],
       ),
     );

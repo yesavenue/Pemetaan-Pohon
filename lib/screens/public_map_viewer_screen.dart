@@ -74,22 +74,19 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: PublicNavbar(
-        currentPage: PublicPage.peta,
-        extraActions: [
-          Badge(
-            label: Text('${_filters.activeCount}'),
-            isLabelVisible: _filters.activeCount > 0,
-            child: IconButton(
-              icon: const Icon(Icons.tune),
-              tooltip: 'Filter',
-              onPressed: () => _openFilterSheet(context),
-            ),
+    return PublicScaffold(
+      currentPage: PublicPage.peta,
+      extraActions: [
+        Badge(
+          label: Text('${_filters.activeCount}'),
+          isLabelVisible: _filters.activeCount > 0,
+          child: IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Filter',
+            onPressed: () => _openFilterSheet(context),
           ),
-        ],
-      ),
-      drawer: const PublicNavDrawer(currentPage: PublicPage.peta),
+        ),
+      ],
       body: StreamBuilder<List<TreeData>>(
         stream: _treeService.streamTrees(),
         builder: (context, snapshot) {
@@ -112,22 +109,36 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen> {
 
           final allTrees = snapshot.data ?? [];
           // Publik hanya boleh melihat data yang sudah diverifikasi admin.
-          final verifiedTrees = allTrees.where((t) => t.status == TreeStatus.verified).toList();
+          final verifiedTrees = allTrees
+              .where((t) => t.status == TreeStatus.verified)
+              .toList();
 
-          final filtered = verifiedTrees.where((t) {
-            final matchesKecamatan = _filters.kecamatan == null ||
-                t.kecamatan.trim().toLowerCase() == _filters.kecamatan!.trim().toLowerCase();
-            final matchesKelurahan = _filters.kelurahan == null ||
-                t.kelurahan.trim().toLowerCase() == _filters.kelurahan!.trim().toLowerCase();
-            final matchesSpecies = _filters.species == 'Semua' ||
-                t.species.trim().toLowerCase() == _filters.species.trim().toLowerCase();
-            final matchesCondition =
-                _filters.conditions.isEmpty || _filters.conditions.contains(t.condition);
-            return matchesKecamatan && matchesKelurahan && matchesSpecies && matchesCondition;
-          }).toList()
-            ..sort((a, b) => _filters.newestFirst
-                ? b.timestamp.compareTo(a.timestamp)
-                : a.timestamp.compareTo(b.timestamp));
+          final filtered =
+              verifiedTrees.where((t) {
+                final matchesKecamatan =
+                    _filters.kecamatan == null ||
+                    t.kecamatan.trim().toLowerCase() ==
+                        _filters.kecamatan!.trim().toLowerCase();
+                final matchesKelurahan =
+                    _filters.kelurahan == null ||
+                    t.kelurahan.trim().toLowerCase() ==
+                        _filters.kelurahan!.trim().toLowerCase();
+                final matchesSpecies =
+                    _filters.species == 'Semua' ||
+                    t.species.trim().toLowerCase() ==
+                        _filters.species.trim().toLowerCase();
+                final matchesCondition =
+                    _filters.conditions.isEmpty ||
+                    _filters.conditions.contains(t.condition);
+                return matchesKecamatan &&
+                    matchesKelurahan &&
+                    matchesSpecies &&
+                    matchesCondition;
+              }).toList()..sort(
+                (a, b) => _filters.newestFirst
+                    ? b.timestamp.compareTo(a.timestamp)
+                    : a.timestamp.compareTo(b.timestamp),
+              );
 
           return Stack(
             children: [
@@ -136,15 +147,23 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen> {
                 top: 12,
                 left: 12,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.95),
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black26, blurRadius: 4),
+                    ],
                   ),
                   child: Text(
                     '${filtered.length} pohon ditampilkan',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -156,12 +175,18 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8)],
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black26, blurRadius: 8),
+                      ],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.search_off, size: 36, color: Colors.black38),
+                        const Icon(
+                          Icons.search_off,
+                          size: 36,
+                          color: Colors.black38,
+                        ),
                         const SizedBox(height: 8),
                         Text(
                           verifiedTrees.isEmpty
@@ -173,7 +198,9 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen> {
                         if (verifiedTrees.isNotEmpty) ...[
                           const SizedBox(height: 10),
                           TextButton(
-                            onPressed: () => setState(() => _filters = const _PublicFilters()),
+                            onPressed: () => setState(
+                              () => _filters = const _PublicFilters(),
+                            ),
                             child: const Text('Reset Filter'),
                           ),
                         ],
@@ -195,7 +222,8 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) => _FilterSheet(initialFilters: _filters, treeService: _treeService),
+      builder: (context) =>
+          _FilterSheet(initialFilters: _filters, treeService: _treeService),
     );
     if (result != null) {
       setState(() => _filters = result);
@@ -235,7 +263,8 @@ class _FilterSheetState extends State<_FilterSheet> {
             final trees = (snapshot.data ?? [])
                 .where((t) => t.status == TreeStatus.verified)
                 .toList();
-            final speciesOptions = trees.map((t) => t.species).toSet().toList()..sort();
+            final speciesOptions = trees.map((t) => t.species).toSet().toList()
+              ..sort();
             final kelurahanOptions = kelurahanFor(_draft.kecamatan);
 
             return ListView(
@@ -245,7 +274,13 @@ class _FilterSheetState extends State<_FilterSheet> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Filter Peta', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    const Text(
+                      'Filter Peta',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: () => Navigator.pop(context),
@@ -258,10 +293,18 @@ class _FilterSheetState extends State<_FilterSheet> {
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String?>(
                   value: _draft.kecamatan,
-                  decoration: const InputDecoration(labelText: 'Kecamatan', isDense: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Kecamatan',
+                    isDense: true,
+                  ),
                   items: [
-                    const DropdownMenuItem(value: null, child: Text('Semua Kecamatan')),
-                    ...cirebonKecamatanList.map((k) => DropdownMenuItem(value: k, child: Text(k))),
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('Semua Kecamatan'),
+                    ),
+                    ...cirebonKecamatanList.map(
+                      (k) => DropdownMenuItem(value: k, child: Text(k)),
+                    ),
                   ],
                   onChanged: (v) => setState(() {
                     _draft = _draft.copyWith(
@@ -274,16 +317,27 @@ class _FilterSheetState extends State<_FilterSheet> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
                   value: _draft.kelurahan,
-                  decoration: const InputDecoration(labelText: 'Kelurahan', isDense: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Kelurahan',
+                    isDense: true,
+                  ),
                   items: [
-                    const DropdownMenuItem(value: null, child: Text('Semua Kelurahan')),
-                    ...kelurahanOptions.map((k) => DropdownMenuItem(value: k, child: Text(k))),
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('Semua Kelurahan'),
+                    ),
+                    ...kelurahanOptions.map(
+                      (k) => DropdownMenuItem(value: k, child: Text(k)),
+                    ),
                   ],
                   onChanged: _draft.kecamatan == null
                       ? null
                       : (v) => setState(() {
-                            _draft = _draft.copyWith(kelurahan: v, clearKelurahan: v == null);
-                          }),
+                          _draft = _draft.copyWith(
+                            kelurahan: v,
+                            clearKelurahan: v == null,
+                          );
+                        }),
                 ),
                 const SizedBox(height: 20),
                 _sectionLabel('Jenis Pohon'),
@@ -294,7 +348,9 @@ class _FilterSheetState extends State<_FilterSheet> {
                   items: ['Semua', ...speciesOptions]
                       .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                       .toList(),
-                  onChanged: (v) => setState(() => _draft = _draft.copyWith(species: v ?? 'Semua')),
+                  onChanged: (v) => setState(
+                    () => _draft = _draft.copyWith(species: v ?? 'Semua'),
+                  ),
                 ),
                 const SizedBox(height: 20),
                 _sectionLabel('Kondisi'),
@@ -325,7 +381,9 @@ class _FilterSheetState extends State<_FilterSheet> {
                   title: const Text('Terbaru'),
                   value: true,
                   groupValue: _draft.newestFirst,
-                  onChanged: (v) => setState(() => _draft = _draft.copyWith(newestFirst: true)),
+                  onChanged: (v) => setState(
+                    () => _draft = _draft.copyWith(newestFirst: true),
+                  ),
                 ),
                 RadioListTile<bool>(
                   dense: true,
@@ -333,14 +391,17 @@ class _FilterSheetState extends State<_FilterSheet> {
                   title: const Text('Terlama'),
                   value: false,
                   groupValue: _draft.newestFirst,
-                  onChanged: (v) => setState(() => _draft = _draft.copyWith(newestFirst: false)),
+                  onChanged: (v) => setState(
+                    () => _draft = _draft.copyWith(newestFirst: false),
+                  ),
                 ),
                 const SizedBox(height: 24),
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => setState(() => _draft = const _PublicFilters()),
+                        onPressed: () =>
+                            setState(() => _draft = const _PublicFilters()),
                         child: const Text('Reset'),
                       ),
                     ),
@@ -387,7 +448,8 @@ class _PublicTreeMap extends StatelessWidget {
         ? _defaultCenter
         : LatLng(
             trees.map((t) => t.latitude).reduce((a, b) => a + b) / trees.length,
-            trees.map((t) => t.longitude).reduce((a, b) => a + b) / trees.length,
+            trees.map((t) => t.longitude).reduce((a, b) => a + b) /
+                trees.length,
           );
 
     final treeById = {for (final t in trees) t.id: t};
@@ -414,30 +476,45 @@ class _PublicTreeMap extends StatelessWidget {
                 height: 36,
                 child: GestureDetector(
                   onTap: () => _showDetail(context, tree),
-                  child: Icon(Icons.location_on, color: treeConditionColor(tree.condition), size: 32),
+                  child: Icon(
+                    Icons.location_on,
+                    color: treeConditionColor(tree.condition),
+                    size: 32,
+                  ),
                 ),
               );
             }).toList(),
             builder: (context, markers) {
               final conditions = markers
-                  .map((m) => treeById[(m.key as ValueKey<String>).value]?.condition)
+                  .map(
+                    (m) =>
+                        treeById[(m.key as ValueKey<String>).value]?.condition,
+                  )
                   .whereType<TreeCondition>()
                   .toSet();
               final worst = conditions.contains(TreeCondition.rawanTumbang)
                   ? TreeCondition.rawanTumbang
                   : conditions.contains(TreeCondition.sakit)
-                      ? TreeCondition.sakit
-                      : TreeCondition.sehat;
+                  ? TreeCondition.sakit
+                  : TreeCondition.sehat;
               return Container(
                 decoration: BoxDecoration(
                   color: treeConditionColor(worst),
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
-                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 3)],
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black26, blurRadius: 3),
+                  ],
                 ),
                 alignment: Alignment.center,
-                child: Text('${markers.length}',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                child: Text(
+                  '${markers.length}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
               );
             },
           ),
@@ -462,23 +539,39 @@ class _PublicTreeMap extends StatelessWidget {
                   if (_decodeBase64(tree.photoBase64) != null)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.memory(_decodeBase64(tree.photoBase64)!,
-                          height: 150, width: double.infinity, fit: BoxFit.cover),
+                      child: Image.memory(
+                        _decodeBase64(tree.photoBase64)!,
+                        height: 150,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   const SizedBox(height: 12),
                   _row('Jenis Pohon', tree.species),
                   _row('Kondisi', tree.condition.label),
                   if (tree.keteranganKondisi.isNotEmpty)
                     _row('Keterangan', tree.keteranganKondisi),
-                  _row('Kecamatan', tree.kecamatan.isEmpty ? '-' : tree.kecamatan),
-                  _row('Kelurahan', tree.kelurahan.isEmpty ? '-' : tree.kelurahan),
-                  _row('Nama Jalan', tree.namaJalan.isEmpty ? '-' : tree.namaJalan),
+                  _row(
+                    'Kecamatan',
+                    tree.kecamatan.isEmpty ? '-' : tree.kecamatan,
+                  ),
+                  _row(
+                    'Kelurahan',
+                    tree.kelurahan.isEmpty ? '-' : tree.kelurahan,
+                  ),
+                  _row(
+                    'Nama Jalan',
+                    tree.namaJalan.isEmpty ? '-' : tree.namaJalan,
+                  ),
                 ],
               ),
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Tutup')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Tutup'),
+            ),
           ],
         );
       },
@@ -491,7 +584,13 @@ class _PublicTreeMap extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 90, child: Text(label, style: const TextStyle(color: Colors.black54, fontSize: 12))),
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.black54, fontSize: 12),
+            ),
+          ),
           Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
         ],
       ),

@@ -1,23 +1,34 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/app_user.dart';
 import '../models/tree_data.dart';
 import '../services/tree_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/cirebon_boundary.dart';
 import '../utils/geo_utils.dart';
+import '../utils/device_location.dart';
 import '../utils/tree_condition_style.dart';
 import '../utils/tree_options.dart';
+import '../widgets/surveyor/unsaved_changes_guard.dart';
+import 'surveyor/tree_location_picker_screen.dart';
 
 class TreeInputScreen extends StatefulWidget {
   final AppUser surveyorUser;
-  const TreeInputScreen({super.key, required this.surveyorUser});
+  final TreeData? initialTree;
+
+  const TreeInputScreen({
+    super.key,
+    required this.surveyorUser,
+    this.initialTree,
+  });
 
   @override
   State<TreeInputScreen> createState() => _TreeInputScreenState();
@@ -30,112 +41,317 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
   final _kelurahanController = TextEditingController();
   final _namaJalanController = TextEditingController();
   final _keteranganKondisiController = TextEditingController();
+  final _locationFormKey = GlobalKey<FormState>();
+  final _treeFormKey = GlobalKey<FormState>();
   final _picker = ImagePicker();
+  final _exitGuardKey = GlobalKey<UnsavedChangesGuardState>();
+  late List<Object?> _initialDraft;
 
+  List<TextEditingController> get _draftControllers => [
+    _customSpeciesController,
+    _kecamatanCustomController,
+    _kelurahanController,
+    _namaJalanController,
+    _keteranganKondisiController,
+  ];
+
+  List<Object?> _draftSnapshot() => [
+    _selectedSpecies,
+    _selectedKecamatan,
+    ..._draftControllers.map((controller) => controller.text),
+    _condition,
+    _position?.latitude,
+    _position?.longitude,
+    _photoBase64,
+  ];
+
+  bool get _hasChanges => !listEquals(_initialDraft, _draftSnapshot());
+
+  void _draftTextChanged() {
+    if (mounted) setState(() {});
+  }
+
+  StreamSubscription<List<TreeData>>? _editSubscription;
+  TreeData? _latestEditTree;
+  bool _editLoaded = false;
+  bool _editReadFailed = false;
+  int _step = 0;
   String? _selectedSpecies;
   String? _selectedKecamatan;
   TreeCondition _condition = TreeCondition.sehat;
-
   Uint8List? _photoBytes;
   String? _photoBase64;
-
-  Position? _position;
+  LatLng? _position;
   bool _isFetchingLocation = false;
+  bool _isPickingPhoto = false;
+  bool _isSaving = false;
   String? _locationError;
 
-  bool _isSaving = false;
-
-  String get _effectiveSpecies {
-    if (_selectedSpecies == 'Lainnya') {
-      return _customSpeciesController.text.trim();
-    }
-    return _selectedSpecies ?? '';
-  }
-
-  String get _effectiveKecamatan {
-    if (_selectedKecamatan == 'Lainnya') {
-      return _kecamatanCustomController.text.trim();
-    }
-    return _selectedKecamatan ?? '';
-  }
-
+  bool get _busy => _isSaving || _isPickingPhoto || _isFetchingLocation;
+  String get _effectiveSpecies => _selectedSpecies == 'Lainnya'
+      ? _customSpeciesController.text.trim()
+      : (_selectedSpecies ?? '');
+  String get _effectiveKecamatan => _selectedKecamatan == 'Lainnya'
+      ? _kecamatanCustomController.text.trim()
+      : (_selectedKecamatan ?? '');
   bool get _isLocationValid =>
-      _position != null && isInsideCirebon(_position!.latitude, _position!.longitude);
-
+      _position != null &&
+      isInsideCirebon(_position!.latitude, _position!.longitude);
   bool get _requiresKeterangan =>
-      _condition == TreeCondition.sakit || _condition == TreeCondition.rawanTumbang;
+      _condition == TreeCondition.sakit ||
+      _condition == TreeCondition.rawanTumbang;
+  bool get _isEditing => widget.initialTree != null;
+  bool get _ownsEdit =>
+      !_isEditing ||
+      (widget.initialTree!.surveyorId == widget.surveyorUser.uid &&
+          FirebaseAuth.instance.currentUser?.uid == widget.surveyorUser.uid &&
+          widget.surveyorUser.isActive);
+
+  String? get _editProblem {
+    if (!_isEditing) {
+      return null;
+    }
+    if (!_ownsEdit) {
+      return 'Akun ini tidak dapat mengubah pohon tersebut.';
+    }
+    if (_editReadFailed) {
+      return 'Data terbaru gagal dimuat. Kembali ke detail dan buka Edit lagi.';
+    }
+    if (!_editLoaded) {
+      return 'Memeriksa data pohon terbaru...';
+    }
+    if (_latestEditTree == null) {
+      return 'Pohon ini sudah tidak tersedia.';
+    }
+    if (!mapEquals(widget.initialTree!.toMap(), _latestEditTree!.toMap())) {
+      return 'Data berubah saat formulir terbuka. Kembali ke detail dan buka Edit lagi sebelum menyimpan.';
+    }
+    return null;
+  }
 
   bool get _canSubmit =>
-      !_isSaving &&
+      !_busy &&
+      _editProblem == null &&
+      _isLocationValid &&
       _effectiveSpecies.isNotEmpty &&
       _effectiveKecamatan.isNotEmpty &&
       _namaJalanController.text.trim().isNotEmpty &&
       _photoBase64 != null &&
-      _position != null &&
-      _isLocationValid &&
-      (!_requiresKeterangan || _keteranganKondisiController.text.trim().isNotEmpty);
+      (!_requiresKeterangan ||
+          _keteranganKondisiController.text.trim().isNotEmpty);
 
-  Future<void> _takePhoto() async {
-    final XFile? photo = await _picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 40,
-      maxWidth: 900,
-    );
-    if (photo == null) return;
-
-    final bytes = await photo.readAsBytes();
-    final base64Str = base64Encode(bytes);
-
-    if (base64Str.length > 700000) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Foto terlalu besar, coba ambil ulang.')),
-      );
+  @override
+  void initState() {
+    super.initState();
+    final tree = widget.initialTree;
+    if (tree == null) {
+      _initialDraft = _draftSnapshot();
+      for (final controller in _draftControllers) {
+        controller.addListener(_draftTextChanged);
+      }
       return;
     }
+    _selectedSpecies = speciesOptions.contains(tree.species)
+        ? tree.species
+        : 'Lainnya';
+    _customSpeciesController.text = tree.species;
+    _selectedKecamatan = kecamatanOptions.contains(tree.kecamatan)
+        ? tree.kecamatan
+        : 'Lainnya';
+    _kecamatanCustomController.text = tree.kecamatan;
+    _kelurahanController.text = tree.kelurahan;
+    _namaJalanController.text = tree.namaJalan;
+    _keteranganKondisiController.text = tree.keteranganKondisi;
+    _condition = tree.condition;
+    _position = LatLng(tree.latitude, tree.longitude);
+    if (tree.photoBase64.isNotEmpty) {
+      try {
+        _photoBytes = base64Decode(tree.photoBase64);
+        _photoBase64 = tree.photoBase64;
+      } on FormatException {
+        _photoBytes = null;
+        _photoBase64 = null;
+      }
+    }
+    _initialDraft = _draftSnapshot();
+    for (final controller in _draftControllers) {
+      controller.addListener(_draftTextChanged);
+    }
+    _editSubscription = _treeService.streamTrees().listen(
+      (trees) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _latestEditTree = trees
+              .where((item) => item.id == tree.id)
+              .firstOrNull;
+          _editLoaded = true;
+          _editReadFailed = false;
+        });
+      },
+      onError: (Object error) {
+        if (mounted) {
+          setState(() => _editReadFailed = true);
+        }
+      },
+    );
+  }
 
-    setState(() {
-      _photoBytes = bytes;
-      _photoBase64 = base64Str;
-    });
+  @override
+  void dispose() {
+    _editSubscription?.cancel();
+    for (final controller in _draftControllers) {
+      controller.removeListener(_draftTextChanged);
+    }
+    _customSpeciesController.dispose();
+    _kecamatanCustomController.dispose();
+    _kelurahanController.dispose();
+    _namaJalanController.dispose();
+    _keteranganKondisiController.dispose();
+    super.dispose();
+  }
+
+  void _message(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _takePhoto() async {
+    if (_busy) {
+      return;
+    }
+    setState(() => _isPickingPhoto = true);
+    try {
+      final photo = await _picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 40,
+        maxWidth: 900,
+      );
+      if (photo == null) {
+        return;
+      }
+      final bytes = await photo.readAsBytes();
+      final encoded = base64Encode(bytes);
+      if (!mounted) {
+        return;
+      }
+      if (bytes.isEmpty || encoded.length > 700000) {
+        _message('Foto kosong atau terlalu besar. Coba ambil ulang.');
+        return;
+      }
+      setState(() {
+        _photoBytes = bytes;
+        _photoBase64 = encoded;
+      });
+    } catch (_) {
+      _message(
+        'Kamera tidak dapat dibuka. Periksa izin kamera lalu coba lagi.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isPickingPhoto = false);
+      }
+    }
   }
 
   Future<void> _fetchLocation() async {
+    if (_busy) {
+      return;
+    }
     setState(() {
       _isFetchingLocation = true;
       _locationError = null;
     });
-
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        throw Exception('Layanan lokasi (GPS) tidak aktif. Aktifkan terlebih dahulu.');
+      final position = await readDeviceLocation();
+      if (!mounted) {
+        return;
       }
+      setState(() => _position = position);
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () =>
+              _locationError = error.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isFetchingLocation = false);
+      }
+    }
+  }
 
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          throw Exception('Izin lokasi ditolak.');
+  Future<void> _pickLocation() async {
+    final selected = await Navigator.push<LatLng>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TreeLocationPickerScreen(initialLocation: _position),
+      ),
+    );
+    if (!mounted || selected == null) {
+      return;
+    }
+    setState(() {
+      _position = selected;
+      _locationError = null;
+    });
+  }
+
+  void _next() {
+    FocusScope.of(context).unfocus();
+    if (_step == 0) {
+      final validForm = _locationFormKey.currentState?.validate() ?? false;
+      if (!_isLocationValid) {
+        _message('Tentukan lokasi pohon di dalam wilayah Kota Cirebon.');
+      }
+      if (!validForm || !_isLocationValid) {
+        return;
+      }
+    } else if (!(_treeFormKey.currentState?.validate() ?? false)) {
+      return;
+    }
+    setState(() => _step += 1);
+  }
+
+  void _back() {
+    unawaited(_exitGuardKey.currentState?.requestBack());
+  }
+
+  Future<void> _submit() async {
+    if (!_canSubmit) {
+      return;
+    }
+    setState(() => _isSaving = true);
+    try {
+      final nearby = await _treeService.findNearbyTrees(
+        _position!.latitude,
+        _position!.longitude,
+      );
+      if (!mounted) {
+        return;
+      }
+      final nearbyTrees = nearby
+          .where((tree) => tree.id != widget.initialTree?.id)
+          .toList();
+      if (nearbyTrees.isNotEmpty) {
+        final proceed = await _showDuplicateWarning(nearbyTrees);
+        if (!mounted || proceed != true) {
+          return;
         }
       }
-      if (permission == LocationPermission.deniedForever) {
-        throw Exception('Izin lokasi ditolak permanen. Aktifkan lewat pengaturan aplikasi.');
+      await _saveTree();
+    } catch (_) {
+      _message('Data belum berhasil disimpan. Periksa koneksi lalu coba lagi.');
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
       }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-
-      setState(() {
-        _position = position;
-        _isFetchingLocation = false;
-      });
-    } catch (e) {
-      setState(() {
-        _locationError = e.toString().replaceFirst('Exception: ', '');
-        _isFetchingLocation = false;
-      });
     }
   }
 
@@ -183,53 +399,49 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Tutup')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Tutup'),
+            ),
           ],
         );
       },
     );
   }
 
-  Widget _guideSection({required String title, required Color color, required List<String> points}) {
+  Widget _guideSection({
+    required String title,
+    required Color color,
+    required List<String> points,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
             const SizedBox(width: 6),
-            Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: color)),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(fontWeight: FontWeight.w700, color: color),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 6),
-        ...points.map((p) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text('•  $p', style: const TextStyle(fontSize: 13)),
-            )),
+        ...points.map(
+          (p) => Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text('•  $p', style: const TextStyle(fontSize: 13)),
+          ),
+        ),
       ],
     );
-  }
-
-  Future<void> _submit() async {
-    if (!_canSubmit) return;
-
-    setState(() => _isSaving = true);
-
-    final nearbyTrees = await _treeService.findNearbyTrees(
-      _position!.latitude,
-      _position!.longitude,
-    );
-
-    if (!mounted) return;
-
-    if (nearbyTrees.isNotEmpty) {
-      setState(() => _isSaving = false);
-      final shouldProceed = await _showDuplicateWarning(nearbyTrees);
-      if (shouldProceed != true) return;
-      setState(() => _isSaving = true);
-    }
-
-    await _saveTree();
   }
 
   Future<bool?> _showDuplicateWarning(List<TreeData> nearbyTrees) {
@@ -269,10 +481,18 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(t.species, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            Text(
+                              t.species,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             Text(
                               '${distance.toStringAsFixed(1)} m dari lokasi Anda • oleh ${t.surveyorName}',
-                              style: const TextStyle(fontSize: 12, color: Colors.black54),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.black54,
+                              ),
                             ),
                           ],
                         ),
@@ -299,6 +519,10 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
   }
 
   Future<void> _saveTree() async {
+    if (_isEditing) {
+      await _saveEdit();
+      return;
+    }
     final tree = TreeData(
       id: '',
       latitude: _position!.latitude,
@@ -311,14 +535,18 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
       kelurahan: _kelurahanController.text.trim(),
       namaJalan: _namaJalanController.text.trim(),
       condition: _condition,
-      keteranganKondisi: _requiresKeterangan ? _keteranganKondisiController.text.trim() : '',
+      keteranganKondisi: _requiresKeterangan
+          ? _keteranganKondisiController.text.trim()
+          : '',
       timestamp: DateTime.now(),
       status: TreeStatus.pending,
     );
 
     final error = await _treeService.createTree(tree);
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
     setState(() => _isSaving = false);
 
     if (error != null) {
@@ -329,10 +557,14 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Data pohon berhasil disimpan!'), backgroundColor: Colors.green),
+      const SnackBar(
+        content: Text('Data pohon berhasil disimpan!'),
+        backgroundColor: Colors.green,
+      ),
     );
 
     setState(() {
+      _step = 0;
       _selectedSpecies = null;
       _selectedKecamatan = null;
       _condition = TreeCondition.sehat;
@@ -345,334 +577,560 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
       _photoBase64 = null;
       _position = null;
       _locationError = null;
+      _initialDraft = _draftSnapshot();
     });
+  }
+
+  Future<void> _saveEdit() async {
+    final problem = _editProblem;
+    if (problem != null) {
+      _message(problem);
+      return;
+    }
+    final updated = _latestEditTree!.copyWith(
+      latitude: _position!.latitude,
+      longitude: _position!.longitude,
+      photoBase64: _photoBase64!,
+      species: _effectiveSpecies,
+      kecamatan: _effectiveKecamatan,
+      kelurahan: _kelurahanController.text.trim(),
+      namaJalan: _namaJalanController.text.trim(),
+      condition: _condition,
+      keteranganKondisi: _requiresKeterangan
+          ? _keteranganKondisiController.text.trim()
+          : '',
+    );
+    final error = await _treeService.updateTree(updated);
+    if (!mounted) {
+      return;
+    }
+    if (error != null) {
+      _message(error);
+      return;
+    }
+    _initialDraft = _draftSnapshot();
+    await _exitGuardKey.currentState?.leave(true);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Input Data Pohon')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _SectionCard(
-            icon: Icons.my_location,
-            title: 'Lokasi GPS',
-            children: [
-              if (_position != null) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: SizedBox(
-                    height: 150,
-                    child: IgnorePointer(
-                      child: FlutterMap(
-                        options: MapOptions(
-                          initialCenter: LatLng(_position!.latitude, _position!.longitude),
-                          initialZoom: 17,
-                        ),
-                        children: [
-                          TileLayer(
-                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.pemetaanpohon.app',
-                          ),
-                          MarkerLayer(markers: [
-                            Marker(
-                              point: LatLng(_position!.latitude, _position!.longitude),
-                              width: 40,
-                              height: 40,
-                              child: Icon(Icons.location_on,
-                                  color: _isLocationValid ? Colors.green : Colors.red, size: 36),
-                            ),
-                          ]),
-                        ],
-                      ),
-                    ),
-                  ),
+    return UnsavedChangesGuard(
+      key: _exitGuardKey,
+      hasChanges: _hasChanges,
+      busy: _busy,
+      hasPreviousStep: _step > 0,
+      onPreviousStep: () => setState(() => _step -= 1),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_isEditing ? 'Edit Pohon' : 'Tambah Pohon'),
+          leading: IconButton(
+            tooltip: 'Kembali',
+            onPressed: _busy ? null : _back,
+            icon: const Icon(Icons.arrow_back),
+          ),
+        ),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: _formBody(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _formFields() => [
+    if (_step == 0) _locationStep(),
+    if (_step == 1) _treeStep(),
+    if (_step == 2) _photoStep(),
+  ];
+
+  Widget _formBody() => LayoutBuilder(
+    builder: (context, constraints) {
+      final warning = _editProblem != null && !_isSaving
+          ? Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                _editProblem!,
+                style: const TextStyle(color: Colors.deepOrange),
+              ),
+            )
+          : const SizedBox.shrink();
+      final actions = Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: _stepActions(),
+      );
+      // Landscape/keyboard: seluruh isi dapat discroll, bukan Column meluber.
+      if (constraints.maxHeight < 420) {
+        return ListView(
+          key: ValueKey('compact-$_step'),
+          children: [
+            _stepIndicator(),
+            warning,
+            AbsorbPointer(
+              absorbing: _busy,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: _formFields(),
                 ),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: (_isLocationValid ? Colors.green : Colors.red).withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: _isLocationValid ? Colors.green : Colors.red),
-                  ),
-                  child: Row(
+              ),
+            ),
+            actions,
+          ],
+        );
+      }
+      return Column(
+        children: [
+          _stepIndicator(),
+          warning,
+          Expanded(
+            child: AbsorbPointer(
+              absorbing: _busy,
+              child: ListView(
+                key: ValueKey(_step),
+                padding: const EdgeInsets.all(16),
+                children: _formFields(),
+              ),
+            ),
+          ),
+          actions,
+        ],
+      );
+    },
+  );
+
+  Widget _stepActions() => LayoutBuilder(
+    builder: (context, constraints) {
+      final back = OutlinedButton(
+        onPressed: _busy ? null : _back,
+        child: const Text('Kembali'),
+      );
+      final next = FilledButton(
+        onPressed: _step == 2
+            ? (_canSubmit ? _submit : null)
+            : (_busy ? null : _next),
+        child: _isSaving
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Text(
+                _step == 2
+                    ? (_isEditing ? 'Simpan Perubahan' : 'Simpan')
+                    : 'Lanjut',
+              ),
+      );
+      final stacked =
+          constraints.maxWidth < 360 ||
+          MediaQuery.textScalerOf(context).scale(14) > 21;
+      if (stacked) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            next,
+            if (_step > 0) ...[const SizedBox(height: 8), back],
+          ],
+        );
+      }
+      return Row(
+        children: [
+          if (_step > 0) ...[back, const SizedBox(width: 12)],
+          Expanded(child: next),
+        ],
+      );
+    },
+  );
+
+  Widget _stepIndicator() {
+    const labels = ['Data Lokasi', 'Data Pohon', 'Foto'];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var index = 0; index < labels.length; index++)
+            Expanded(
+              child: Column(
+                children: [
+                  Row(
                     children: [
-                      Icon(
-                        _isLocationValid ? Icons.check_circle_outline : Icons.error_outline,
-                        color: _isLocationValid ? Colors.green : Colors.red,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          _isLocationValid
-                              ? 'Di dalam wilayah Kota Cirebon\n${_position!.latitude.toStringAsFixed(5)}, ${_position!.longitude.toStringAsFixed(5)}'
-                              : 'Lokasi berada di luar wilayah pemetaan Kota Cirebon.',
-                          style: TextStyle(
-                            color: _isLocationValid ? Colors.green[800] : Colors.red[800],
-                            fontSize: 13,
-                          ),
+                        child: Divider(
+                          color: index == 0
+                              ? Colors.transparent
+                              : index <= _step
+                              ? AppColors.leaf
+                              : Colors.black12,
+                        ),
+                      ),
+                      Semantics(
+                        label: 'Langkah ${index + 1}: ${labels[index]}',
+                        selected: index == _step,
+                        child: CircleAvatar(
+                          radius: 15,
+                          backgroundColor: index <= _step
+                              ? AppColors.leaf
+                              : Colors.blueGrey.shade50,
+                          child: index < _step
+                              ? const Icon(
+                                  Icons.check,
+                                  size: 18,
+                                  color: Colors.white,
+                                )
+                              : Text(
+                                  '${index + 1}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: index == _step
+                                        ? Colors.white
+                                        : AppColors.navy,
+                                  ),
+                                ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Divider(
+                          color: index == labels.length - 1
+                              ? Colors.transparent
+                              : index < _step
+                              ? AppColors.leaf
+                              : Colors.black12,
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 10),
-              ] else
-                Container(
-                  height: 150,
-                  decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(10)),
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.map_outlined, size: 40, color: Colors.black38),
-                ),
-              if (_locationError != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4, bottom: 8),
-                  child: Text(_locationError!, style: const TextStyle(color: Colors.red, fontSize: 13)),
-                ),
-              const SizedBox(height: 4),
-              _BigButton(
-                onPressed: _isFetchingLocation ? null : _fetchLocation,
-                icon: _isFetchingLocation ? null : Icons.my_location,
-                loading: _isFetchingLocation,
-                label: _position == null ? 'AMBIL LOKASI GPS' : 'AMBIL ULANG LOKASI',
-                filled: _position == null,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _SectionCard(
-            icon: Icons.camera_alt_outlined,
-            title: 'Foto Pohon',
-            children: [
-              if (_photoBytes != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Image.memory(_photoBytes!, height: 180, width: double.infinity, fit: BoxFit.cover),
-                )
-              else
-                Container(
-                  height: 180,
-                  decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(10)),
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.image_outlined, size: 40, color: Colors.black38),
-                ),
-              const SizedBox(height: 10),
-              _BigButton(
-                onPressed: _takePhoto,
-                icon: Icons.camera_alt_outlined,
-                label: _photoBytes == null ? 'AMBIL FOTO' : 'AMBIL ULANG FOTO',
-                filled: _photoBytes == null,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _SectionCard(
-            icon: Icons.park_outlined,
-            title: 'Detail Pohon',
-            children: [
-              DropdownButtonFormField<String>(
-                value: _selectedSpecies,
-                decoration: const InputDecoration(labelText: 'Jenis Pohon', isDense: true),
-                hint: const Text('Pilih jenis pohon'),
-                items: speciesOptions.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                onChanged: (value) => setState(() => _selectedSpecies = value),
-              ),
-              if (_selectedSpecies == 'Lainnya') ...[
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _customSpeciesController,
-                  decoration: const InputDecoration(labelText: 'Sebutkan jenis pohon', isDense: true),
-                  onChanged: (_) => setState(() {}),
-                ),
-              ],
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Text('Kondisi Pohon', style: TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: const Icon(Icons.info_outline, size: 18),
-                    tooltip: 'Lihat panduan ciri-ciri',
-                    onPressed: _showConditionGuide,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                  const SizedBox(height: 6),
+                  Text(
+                    labels[index],
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: index <= _step ? AppColors.leaf : Colors.blueGrey,
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: TreeCondition.values.map((c) {
-                  final color = treeConditionColor(c);
-                  return ChoiceChip(
-                    label: Text(c.label),
-                    selected: _condition == c,
-                    selectedColor: color.withValues(alpha: 0.2),
-                    labelStyle: TextStyle(color: _condition == c ? color : Colors.black87),
-                    side: BorderSide(color: _condition == c ? color : Colors.black26),
-                    onSelected: (_) => setState(() => _condition = c),
-                  );
-                }).toList(),
-              ),
-              if (_requiresKeterangan) ...[
-                const SizedBox(height: 12),
-                Text.rich(
-                  TextSpan(
-                    text: 'Keterangan Kondisi Pohon ',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                    children: [
-                      TextSpan(text: '*', style: TextStyle(color: treeConditionColor(_condition))),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _keteranganKondisiController,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    hintText: _condition == TreeCondition.sakit
-                        ? 'Jelaskan kondisi pohon (mis. daun menguning, batang berlubang)...'
-                        : 'Jelaskan alasan pohon dianggap rawan tumbang...',
-                    isDense: true,
-                  ),
-                  onChanged: (_) => setState(() {}),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 16),
-          _SectionCard(
-            icon: Icons.location_city_outlined,
-            title: 'Lokasi Administratif',
-            children: [
-              DropdownButtonFormField<String>(
-                value: _selectedKecamatan,
-                decoration: const InputDecoration(labelText: 'Kecamatan', isDense: true),
-                hint: const Text('Pilih kecamatan'),
-                items: kecamatanOptions.map((k) => DropdownMenuItem(value: k, child: Text(k))).toList(),
-                onChanged: (value) => setState(() => _selectedKecamatan = value),
-              ),
-              if (_selectedKecamatan == 'Lainnya') ...[
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _kecamatanCustomController,
-                  decoration: const InputDecoration(labelText: 'Sebutkan kecamatan', isDense: true),
-                  onChanged: (_) => setState(() {}),
-                ),
-              ],
-              const SizedBox(height: 16),
-              TextField(
-                controller: _kelurahanController,
-                decoration: const InputDecoration(labelText: 'Kelurahan (opsional)', isDense: true),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _namaJalanController,
-                decoration: const InputDecoration(labelText: 'Nama Jalan', hintText: 'Mis. Jl. Siliwangi', isDense: true),
-                onChanged: (_) => setState(() {}),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          _BigButton(
-            onPressed: _canSubmit ? _submit : null,
-            icon: _isSaving ? null : Icons.save_outlined,
-            loading: _isSaving,
-            label: 'SIMPAN DATA POHON',
-            filled: true,
-            height: 60,
-          ),
-          const SizedBox(height: 12),
+            ),
         ],
       ),
     );
   }
-}
 
-// Kartu pengelompok section form, biar form panjang terasa lebih
-// terorganisir/scannable di layar HP, bukan satu list panjang tanpa jeda.
-class _SectionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final List<Widget> children;
-  const _SectionCard({required this.icon, required this.title, required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-              ],
+  Widget _locationStep() {
+    final point = _position;
+    return Form(
+      key: _locationFormKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              height: 190,
+              child: point == null
+                  ? Container(
+                      color: Colors.blueGrey.shade50,
+                      child: const Center(
+                        child: Icon(
+                          Icons.map_outlined,
+                          size: 52,
+                          color: Colors.blueGrey,
+                        ),
+                      ),
+                    )
+                  : IgnorePointer(
+                      child: FlutterMap(
+                        key: ValueKey('${point.latitude},${point.longitude}'),
+                        options: MapOptions(
+                          initialCenter: point,
+                          initialZoom: 17,
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate:
+                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.pemetaanpohon.app',
+                          ),
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: point,
+                                width: 40,
+                                height: 40,
+                                child: Icon(
+                                  Icons.location_on,
+                                  size: 36,
+                                  color: _isLocationValid
+                                      ? AppColors.leaf
+                                      : Colors.red,
+                                ),
+                              ),
+                            ],
+                          ),
+                          RichAttributionWidget(
+                            attributions: [
+                              const TextSourceAttribution(
+                                'OpenStreetMap contributors',
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
             ),
+          ),
+          const SizedBox(height: 8),
+          if (point != null)
+            Text(
+              _isLocationValid
+                  ? '${point.latitude.toStringAsFixed(6)}, ${point.longitude.toStringAsFixed(6)}'
+                  : 'Lokasi berada di luar wilayah Kota Cirebon.',
+              style: TextStyle(
+                color: _isLocationValid ? AppColors.leaf : Colors.red,
+              ),
+            ),
+          if (_locationError != null)
+            Text(_locationError!, style: const TextStyle(color: Colors.red)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _pickLocation,
+            icon: const Icon(Icons.location_on_outlined),
+            label: const Text('Pilih Lokasi di Peta'),
+          ),
+          TextButton.icon(
+            onPressed: _isFetchingLocation ? null : _fetchLocation,
+            icon: _isFetchingLocation
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.my_location),
+            label: Text(
+              _isFetchingLocation
+                  ? 'Mengambil lokasi...'
+                  : 'Gunakan Lokasi GPS',
+            ),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            value: _selectedKecamatan,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Kecamatan *'),
+            items: kecamatanOptions
+                .map(
+                  (value) => DropdownMenuItem(value: value, child: Text(value)),
+                )
+                .toList(),
+            validator: (value) => value == null ? 'Pilih kecamatan.' : null,
+            onChanged: (value) => setState(() => _selectedKecamatan = value),
+          ),
+          if (_selectedKecamatan == 'Lainnya') ...[
             const SizedBox(height: 12),
-            ...children,
+            TextFormField(
+              controller: _kecamatanCustomController,
+              decoration: const InputDecoration(
+                labelText: 'Sebutkan kecamatan *',
+              ),
+              validator: (value) => _required(value, 'Isi kecamatan.'),
+            ),
           ],
-        ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _kelurahanController,
+            decoration: const InputDecoration(
+              labelText: 'Kelurahan (opsional)',
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _namaJalanController,
+            decoration: const InputDecoration(
+              labelText: 'Alamat Pohon / Nama Jalan *',
+              hintText: 'Mis. Jl. Siliwangi',
+            ),
+            validator: (value) => _required(value, 'Isi nama jalan.'),
+          ),
+        ],
       ),
     );
   }
-}
 
-// Tombol aksi utama berukuran besar — mudah ditekan satu tangan di
-// lapangan, sesuai prinsip "tombol besar, input sederhana".
-class _BigButton extends StatelessWidget {
-  final VoidCallback? onPressed;
-  final IconData? icon;
-  final String label;
-  final bool filled;
-  final bool loading;
-  final double height;
+  String? _required(String? value, String message) =>
+      value == null || value.trim().isEmpty ? message : null;
 
-  const _BigButton({
-    required this.onPressed,
-    required this.icon,
-    required this.label,
-    this.filled = false,
-    this.loading = false,
-    this.height = 52,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final child = loading
-        ? const SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-          )
-        : Text(label, style: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.3));
-
-    if (filled) {
-      return SizedBox(
-        width: double.infinity,
-        height: height,
-        child: FilledButton.icon(
-          onPressed: onPressed,
-          icon: loading ? const SizedBox.shrink() : Icon(icon),
-          label: child,
-        ),
-      );
-    }
-    return SizedBox(
-      width: double.infinity,
-      height: height,
-      child: OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: loading ? const SizedBox.shrink() : Icon(icon),
-        label: child,
+  Widget _treeStep() {
+    return Form(
+      key: _treeFormKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DropdownButtonFormField<String>(
+            value: _selectedSpecies,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Jenis Pohon *'),
+            items: speciesOptions
+                .map(
+                  (value) => DropdownMenuItem(value: value, child: Text(value)),
+                )
+                .toList(),
+            validator: (value) => value == null ? 'Pilih jenis pohon.' : null,
+            onChanged: (value) => setState(() => _selectedSpecies = value),
+          ),
+          if (_selectedSpecies == 'Lainnya') ...[
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _customSpeciesController,
+              decoration: const InputDecoration(
+                labelText: 'Sebutkan jenis pohon *',
+              ),
+              validator: (value) => _required(value, 'Isi jenis pohon.'),
+            ),
+          ],
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Kondisi Pohon',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              IconButton(
+                onPressed: _showConditionGuide,
+                tooltip: 'Panduan kondisi pohon',
+                icon: const Icon(Icons.info_outline),
+              ),
+            ],
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: TreeCondition.values.map((condition) {
+              final color = treeConditionColor(condition);
+              return ChoiceChip(
+                label: Text(condition.label),
+                selected: _condition == condition,
+                selectedColor: color.withValues(alpha: .15),
+                onSelected: (_) => setState(() => _condition = condition),
+              );
+            }).toList(),
+          ),
+          if (_requiresKeterangan) ...[
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _keteranganKondisiController,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Keterangan Kondisi *',
+                hintText: 'Jelaskan kondisi pohon yang ditemukan.',
+              ),
+              validator: (value) =>
+                  _required(value, 'Isi keterangan kondisi pohon.'),
+            ),
+          ],
+        ],
       ),
+    );
+  }
+
+  Widget _photoStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Foto Pohon *',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        if (_photoBytes != null)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.memory(
+              _photoBytes!,
+              height: 240,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              errorBuilder: (_, error, stack) => const SizedBox(
+                height: 160,
+                child: Center(
+                  child: Text(
+                    'Foto tidak dapat ditampilkan. Ambil ulang foto.',
+                  ),
+                ),
+              ),
+            ),
+          )
+        else
+          Container(
+            height: 220,
+            decoration: BoxDecoration(
+              color: Colors.blueGrey.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.add_a_photo_outlined,
+              size: 48,
+              color: Colors.blueGrey,
+            ),
+          ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _isPickingPhoto ? null : _takePhoto,
+          icon: const Icon(Icons.camera_alt_outlined),
+          label: Text(
+            _isPickingPhoto
+                ? 'Membuka kamera...'
+                : _photoBytes == null
+                ? 'Ambil Foto'
+                : 'Ambil Ulang Foto',
+          ),
+        ),
+        if (_photoBytes != null)
+          TextButton.icon(
+            onPressed: () => setState(() {
+              _photoBytes = null;
+              _photoBase64 = null;
+            }),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Hapus Foto'),
+          ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Ringkasan Data',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(_effectiveSpecies),
+                Text(
+                  '${_namaJalanController.text.trim()}, $_effectiveKecamatan',
+                ),
+                Text(
+                  _condition.label,
+                  style: TextStyle(color: treeConditionColor(_condition)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_photoBytes == null)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text('Ambil satu foto pohon sebelum menyimpan.'),
+          ),
+      ],
     );
   }
 }

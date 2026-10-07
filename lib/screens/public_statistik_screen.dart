@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/public_navbar.dart';
 
 import '../models/tree_data.dart';
 import '../services/tree_service.dart';
@@ -11,8 +12,8 @@ class PublicStatistikScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Statistik Pohon')),
+    return PublicScaffold(
+      currentPage: PublicPage.statistik,
       body: StreamBuilder<List<TreeData>>(
         stream: TreeService().streamTrees(),
         builder: (context, snapshot) {
@@ -25,18 +26,27 @@ class PublicStatistikScreen extends StatelessWidget {
 
           // Statistik publik hanya menghitung data yang sudah diverifikasi,
           // konsisten dengan apa yang ditampilkan di peta publik.
-          final trees = (snapshot.data ?? []).where((t) => t.status == TreeStatus.verified).toList();
+          final trees = (snapshot.data ?? [])
+              .where((t) => t.status == TreeStatus.verified)
+              .toList();
 
-          final sehatCount = trees.where((t) => t.condition == TreeCondition.sehat).length;
-          final sakitCount = trees.where((t) => t.condition == TreeCondition.sakit).length;
-          final rawanCount = trees.where((t) => t.condition == TreeCondition.rawanTumbang).length;
+          final sehatCount = trees
+              .where((t) => t.condition == TreeCondition.sehat)
+              .length;
+          final sakitCount = trees
+              .where((t) => t.condition == TreeCondition.sakit)
+              .length;
+          final rawanCount = trees
+              .where((t) => t.condition == TreeCondition.rawanTumbang)
+              .length;
 
           final speciesCount = <String, int>{};
           for (final t in trees) {
             speciesCount[t.species] = (speciesCount[t.species] ?? 0) + 1;
           }
           final speciesSorted = Map.fromEntries(
-            speciesCount.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
+            speciesCount.entries.toList()
+              ..sort((a, b) => b.value.compareTo(a.value)),
           );
 
           final conditionData = <String, int>{
@@ -47,17 +57,22 @@ class PublicStatistikScreen extends StatelessWidget {
           final conditionColorByLabel = <String, Color>{
             TreeCondition.sehat.label: treeConditionColor(TreeCondition.sehat),
             TreeCondition.sakit.label: treeConditionColor(TreeCondition.sakit),
-            TreeCondition.rawanTumbang.label: treeConditionColor(TreeCondition.rawanTumbang),
+            TreeCondition.rawanTumbang.label: treeConditionColor(
+              TreeCondition.rawanTumbang,
+            ),
           };
 
-          final kecamatanCount = <String, int>{for (final k in cirebonKecamatanList) k: 0};
+          final kecamatanCount = <String, int>{
+            for (final k in cirebonKecamatanList) k: 0,
+          };
           for (final t in trees) {
             if (kecamatanCount.containsKey(t.kecamatan)) {
               kecamatanCount[t.kecamatan] = kecamatanCount[t.kecamatan]! + 1;
             }
           }
           final kecamatanSorted = Map.fromEntries(
-            kecamatanCount.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
+            kecamatanCount.entries.toList()
+              ..sort((a, b) => b.value.compareTo(a.value)),
           );
 
           return ListView(
@@ -67,38 +82,52 @@ class PublicStatistikScreen extends StatelessWidget {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _StatCard(label: 'Total Pohon', value: trees.length, color: AppColors.navy),
                   _StatCard(
-                      label: 'Pohon Sehat',
-                      value: sehatCount,
-                      color: treeConditionColor(TreeCondition.sehat)),
+                    label: 'Total Pohon',
+                    value: trees.length,
+                    color: AppColors.navy,
+                  ),
                   _StatCard(
-                      label: 'Pohon Sakit',
-                      value: sakitCount,
-                      color: treeConditionColor(TreeCondition.sakit)),
+                    label: 'Pohon Sehat',
+                    value: sehatCount,
+                    color: treeConditionColor(TreeCondition.sehat),
+                  ),
                   _StatCard(
-                      label: 'Rawan Tumbang',
-                      value: rawanCount,
-                      color: treeConditionColor(TreeCondition.rawanTumbang)),
+                    label: 'Pohon Sakit',
+                    value: sakitCount,
+                    color: treeConditionColor(TreeCondition.sakit),
+                  ),
+                  _StatCard(
+                    label: 'Rawan Tumbang',
+                    value: rawanCount,
+                    color: treeConditionColor(TreeCondition.rawanTumbang),
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
               _SectionCard(
                 title: 'Distribusi Jenis Pohon',
-                child: _HorizontalBarChart(data: speciesSorted, defaultColor: AppColors.navy),
+                child: _HorizontalBarChart(
+                  data: speciesSorted,
+                  defaultColor: AppColors.navy,
+                ),
               ),
               const SizedBox(height: 16),
               _SectionCard(
                 title: 'Distribusi Kondisi Pohon',
                 child: _HorizontalBarChart(
                   data: conditionData,
-                  colorForKey: (k) => conditionColorByLabel[k] ?? AppColors.navy,
+                  colorForKey: (k) =>
+                      conditionColorByLabel[k] ?? AppColors.navy,
                 ),
               ),
               const SizedBox(height: 16),
               _SectionCard(
                 title: 'Distribusi per Kecamatan',
-                child: _HorizontalBarChart(data: kecamatanSorted, defaultColor: AppColors.leaf),
+                child: _HorizontalBarChart(
+                  data: kecamatanSorted,
+                  defaultColor: AppColors.leaf,
+                ),
               ),
             ],
           );
@@ -112,7 +141,11 @@ class _StatCard extends StatelessWidget {
   final String label;
   final int value;
   final Color color;
-  const _StatCard({required this.label, required this.value, required this.color});
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -128,11 +161,21 @@ class _StatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
           const SizedBox(height: 10),
-          Text('$value', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
+          Text(
+            '$value',
+            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 4),
-          Text(label, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
         ],
       ),
     );
@@ -157,7 +200,10 @@ class _SectionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+          Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+          ),
           const SizedBox(height: 12),
           child,
         ],
@@ -201,20 +247,30 @@ class _HorizontalBarChart extends StatelessWidget {
             children: [
               SizedBox(
                 width: 110,
-                child: Text(e.key, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                child: Text(
+                  e.key,
+                  style: const TextStyle(fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               Expanded(
                 child: Stack(
                   children: [
                     Container(
                       height: 18,
-                      decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(4)),
+                      decoration: BoxDecoration(
+                        color: Colors.black12,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
                     ),
                     FractionallySizedBox(
                       widthFactor: ratio.clamp(0.03, 1.0),
                       child: Container(
                         height: 18,
-                        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)),
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       ),
                     ),
                   ],
@@ -223,8 +279,14 @@ class _HorizontalBarChart extends StatelessWidget {
               const SizedBox(width: 8),
               SizedBox(
                 width: 36,
-                child: Text('${e.value}',
-                    textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                child: Text(
+                  '${e.value}',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
               ),
             ],
           ),
