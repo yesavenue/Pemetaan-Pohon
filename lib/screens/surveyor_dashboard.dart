@@ -11,6 +11,7 @@ import 'surveyor/tree_browser.dart';
 import 'surveyor/tree_detail_screen.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/surveyor/survey_loading.dart';
 import 'surveyor_profile_screen.dart';
 import 'tree_input_screen.dart';
 
@@ -168,7 +169,7 @@ class _SurveyorDashboardState extends State<SurveyorDashboard> {
     if (_selectedTab == 3) {
       return 'Profil';
     }
-    return 'Pemetaan Pohon\nKota Cirebon';
+    return 'Ruang Kerja Surveyor';
   }
 
   @override
@@ -181,7 +182,13 @@ class _SurveyorDashboardState extends State<SurveyorDashboard> {
         }
       },
       child: Scaffold(
+        backgroundColor: const Color(0xFFF3F6F5),
         appBar: AppBar(
+          backgroundColor: AppColors.navy,
+          foregroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          toolbarHeight: MediaQuery.sizeOf(context).width < 600 ? 52 : 64,
           automaticallyImplyLeading: false,
           leading: _showList
               ? IconButton(
@@ -229,7 +236,7 @@ class _SurveyorDashboardState extends State<SurveyorDashboard> {
                     );
                   }
                   if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const SurveyLoading();
                   }
                   final data = snapshot.data!;
                   if (_showList) {
@@ -238,6 +245,7 @@ class _SurveyorDashboardState extends State<SurveyorDashboard> {
                       memory: _listMemory,
                       trees: data.trees,
                       onOpenTree: _openTree,
+                      onAddTree: _openInput,
                     );
                   }
                   if (_selectedTab == 2) {
@@ -247,6 +255,7 @@ class _SurveyorDashboardState extends State<SurveyorDashboard> {
                       trees: data.trees,
                       mapMode: true,
                       onOpenTree: _openTree,
+                      onAddTree: _openInput,
                     );
                   }
                   return Center(

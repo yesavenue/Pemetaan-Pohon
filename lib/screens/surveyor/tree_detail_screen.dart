@@ -8,7 +8,8 @@ import '../../models/app_user.dart';
 import '../../models/tree_data.dart';
 import '../../services/tree_service.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/tree_condition_style.dart';
+import '../../widgets/surveyor/tree_badges.dart';
+import '../../widgets/surveyor/survey_loading.dart';
 import '../../widgets/surveyor/tree_thumbnail.dart';
 import '../tree_input_screen.dart';
 import 'tree_browser.dart';
@@ -172,7 +173,11 @@ class _TreeDetailScreenState extends State<TreeDetailScreen> {
     return PopScope<Object?>(
       canPop: !_busy,
       child: Scaffold(
+        backgroundColor: const Color(0xFFF3F6F5),
         appBar: AppBar(
+          backgroundColor: AppColors.navy,
+          foregroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
           title: const Text('Detail Pohon'),
           leading: IconButton(
             tooltip: 'Kembali',
@@ -215,7 +220,7 @@ class _TreeDetailScreenState extends State<TreeDetailScreen> {
       );
     }
     if (!_loaded || (_busy && _tree == null)) {
-      return const Center(child: CircularProgressIndicator());
+      return const SurveyLoading(label: 'Memuat detail pohon…');
     }
     final tree = _tree;
     if (tree == null) {
@@ -256,21 +261,11 @@ class _TreeDetailScreenState extends State<TreeDetailScreen> {
                       color: AppColors.navy,
                     ),
                   ),
-                  Chip(
-                    avatar: Icon(
-                      Icons.circle,
-                      size: 10,
-                      color: treeConditionColor(tree.condition),
-                    ),
-                    label: Text(tree.condition.label),
-                    backgroundColor: treeConditionColor(
-                      tree.condition,
-                    ).withValues(alpha: .1),
-                    side: BorderSide.none,
-                  ),
+                  TreeBadges(tree: tree),
                 ],
               ),
               const SizedBox(height: 12),
+              _section('Lokasi & kewenangan'),
               _field(Icons.location_on, 'Lokasi', tree.namaJalan),
               _field(
                 Icons.my_location,
@@ -279,6 +274,14 @@ class _TreeDetailScreenState extends State<TreeDetailScreen> {
               ),
               _field(Icons.location_city, 'Kecamatan', tree.kecamatan),
               _field(Icons.apartment, 'Kelurahan', tree.kelurahan),
+              _field(
+                Icons.account_balance_outlined,
+                'Ranah kewenangan',
+                tree.ranahKewenangan.isEmpty
+                    ? 'Belum diketahui'
+                    : tree.ranahKewenangan,
+              ),
+              _section('Catatan survei'),
               _field(Icons.notes, 'Keterangan Kondisi', tree.keteranganKondisi),
               _field(Icons.schedule, 'Tanggal Input', _date(tree.timestamp)),
               _field(
@@ -311,41 +314,23 @@ class _TreeDetailScreenState extends State<TreeDetailScreen> {
               ),
               if (_canManage(tree)) ...[
                 const SizedBox(height: 12),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final stacked =
-                        constraints.maxWidth < 360 ||
-                        MediaQuery.textScalerOf(context).scale(14) > 21;
-                    final width = stacked
-                        ? constraints.maxWidth
-                        : (constraints.maxWidth - 12) / 2;
-                    return Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        SizedBox(
-                          width: width,
-                          child: OutlinedButton.icon(
-                            onPressed: _busy ? null : () => _edit(tree),
-                            icon: const Icon(Icons.edit_outlined),
-                            label: const Text('Edit'),
-                          ),
-                        ),
-                        SizedBox(
-                          width: width,
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              side: const BorderSide(color: Colors.red),
-                            ),
-                            onPressed: _busy ? null : () => _delete(tree),
-                            icon: const Icon(Icons.delete_outline),
-                            label: const Text('Hapus'),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                FilledButton.icon(
+                  onPressed: _busy ? null : () => _edit(tree),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Edit data pohon'),
+                ),
+                const SizedBox(height: 20),
+                const Divider(),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.red.shade800,
+                    ),
+                    onPressed: _busy ? null : () => _delete(tree),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Hapus pohon'),
+                  ),
                 ),
               ],
               if (_busy)
@@ -359,6 +344,18 @@ class _TreeDetailScreenState extends State<TreeDetailScreen> {
       ),
     );
   }
+
+  Widget _section(String title) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+    child: Text(
+      title,
+      style: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        color: AppColors.navy,
+      ),
+    ),
+  );
 
   String _date(DateTime value) {
     final date = value.toLocal();

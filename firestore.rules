@@ -6,8 +6,8 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Role selalu diambil dari profil tersimpan, bukan payload klien.
-    // Default isActive mengikuti AppUser existing; false tetap ditolak.
+    // Role diambil dari profil pengguna yang tersimpan.
+    // Akun dengan isActive false tetap ditolak.
     function activeRole(role) {
       return signedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -24,31 +24,58 @@ service cloud.firestore {
     }
 
     function text(value, minimum, maximum) {
-      return value is string && value.size() >= minimum && value.size() <= maximum;
+      return value is string
+        && value.size() >= minimum
+        && value.size() <= maximum;
     }
 
     function coordinates(latitude, longitude) {
-      return latitude is number && longitude is number
-        && latitude >= -90 && latitude <= 90
-        && longitude >= -180 && longitude <= 180;
+      return latitude is number
+        && longitude is number
+        && latitude >= -90
+        && latitude <= 90
+        && longitude >= -180
+        && longitude <= 180;
     }
 
     function treeFields(d) {
-      let fields = ['latitude', 'longitude', 'photoBase64', 'surveyorId',
-        'surveyorName', 'species', 'kecamatan', 'kelurahan', 'namaJalan',
-        'condition', 'keteranganKondisi', 'timestamp', 'status', 'qrGenerated'];
-      return d.keys().hasAll(fields) && d.keys().hasOnly(fields)
+      let fields = [
+        'latitude',
+        'longitude',
+        'photoBase64',
+        'surveyorId',
+        'surveyorName',
+        'species',
+        'kecamatan',
+        'kelurahan',
+        'namaJalan',
+        'condition',
+        'keteranganKondisi',
+        'timestamp',
+        'status',
+        'qrGenerated'
+      ];
+
+      return d.keys().hasAll(fields)
+        && d.keys().hasOnly(fields.concat(['ranahKewenangan']))
+        && text(d.get('ranahKewenangan', ''), 0, 120)
         && coordinates(d.latitude, d.longitude)
         && text(d.photoBase64, 0, 700000)
-        && text(d.surveyorId, 1, 128) && text(d.surveyorName, 0, 250)
+        && text(d.surveyorId, 1, 128)
+        && text(d.surveyorName, 0, 250)
         && text(d.species, 1, 200)
-        && text(d.kecamatan, 0, 200) && text(d.kelurahan, 0, 200)
+        && text(d.kecamatan, 0, 200)
+        && text(d.kelurahan, 0, 200)
         && text(d.namaJalan, 0, 2000)
         && d.condition in ['sehat', 'sakit', 'rawanTumbang']
         && text(d.keteranganKondisi, 0, 4000)
-        && (d.condition == 'sehat' || d.keteranganKondisi.size() > 0)
+        && (
+          d.condition == 'sehat'
+          || d.keteranganKondisi.size() > 0
+        )
         && d.timestamp is timestamp
-        && d.status in ['pending', 'verified'] && d.qrGenerated is bool;
+        && d.status in ['pending', 'verified']
+        && d.qrGenerated is bool;
     }
 
     function treeIdentityUnchanged(d) {
@@ -59,112 +86,230 @@ service cloud.firestore {
     }
 
     match /trees/{treeId} {
-      // GIS publik dan streamTrees existing membaca seluruh koleksi.
+      // Peta publik dan streamTrees membaca koleksi pohon.
       allow read: if true;
-      allow create: if signedIn() && treeFields(request.resource.data)
+
+      allow create: if signedIn()
+        && treeFields(request.resource.data)
         && request.resource.data.surveyorId == request.auth.uid
         && request.resource.data.qrGenerated == false
-        && ((surveyor() && request.resource.data.status == 'pending'
-             && request.resource.data.photoBase64.size() > 0)
-          || (admin() && request.resource.data.status == 'verified'));
+        && (
+          (
+            surveyor()
+            && request.resource.data.status == 'pending'
+            && request.resource.data.photoBase64.size() > 0
+          )
+          || (
+            admin()
+            && request.resource.data.status == 'verified'
+          )
+        );
 
-      // Cabang status saja tetap dapat memverifikasi dokumen lama.
+      // Admin dapat memverifikasi dokumen lama melalui perubahan status.
       allow update: if admin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(['status'])
         && request.resource.data.status in ['pending', 'verified'];
 
-      // Update service existing mengirim seluruh toMap(), bukan patch kecil.
+      // Pembaruan data pohon lengkap.
       allow update: if treeFields(request.resource.data)
         && treeIdentityUnchanged(request.resource.data)
-        && (admin() || (surveyor()
-          && resource.data.surveyorId == request.auth.uid
-          && request.resource.data.status == resource.data.get('status', 'pending')));
+        && (
+          admin()
+          || (
+            surveyor()
+            && resource.data.surveyorId == request.auth.uid
+            && request.resource.data.status
+              == resource.data.get('status', 'pending')
+          )
+        );
+
       allow delete: if admin()
-        || (surveyor() && resource.data.surveyorId == request.auth.uid);
+        || (
+          surveyor()
+          && resource.data.surveyorId == request.auth.uid
+        );
     }
 
     function newSurveyor(d) {
-      let fields = ['email', 'role', 'name', 'requiresPasswordChange', 'isActive'];
-      return d.keys().hasAll(fields) && d.keys().hasOnly(fields)
-        && text(d.email, 1, 320) && text(d.name, 1, 200)
-        && d.role == 'surveyor' && d.requiresPasswordChange == true
+      let fields = [
+        'email',
+        'role',
+        'name',
+        'requiresPasswordChange',
+        'isActive'
+      ];
+
+      return d.keys().hasAll(fields)
+        && d.keys().hasOnly(fields)
+        && text(d.email, 1, 320)
+        && text(d.name, 1, 200)
+        && d.role == 'surveyor'
+        && d.requiresPasswordChange == true
         && d.isActive == true;
     }
 
     function changedProfileValuesValid() {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
       let d = request.resource.data;
-      return (!changed.hasAny(['name']) || text(d.name, 1, 200))
-        && (!changed.hasAny(['email']) || text(d.email, 1, 320))
-        && (!changed.hasAny(['requiresPasswordChange']) || d.requiresPasswordChange == false)
-        && (!changed.hasAny(['activeSessionId']) || text(d.activeSessionId, 1, 200));
+
+      return (
+          !changed.hasAny(['name'])
+          || text(d.name, 1, 200)
+        )
+        && (
+          !changed.hasAny(['email'])
+          || text(d.email, 1, 320)
+        )
+        && (
+          !changed.hasAny(['requiresPasswordChange'])
+          || d.requiresPasswordChange == false
+        )
+        && (
+          !changed.hasAny(['activeSessionId'])
+          || text(d.activeSessionId, 1, 200)
+        );
     }
 
     match /users/{userId} {
-      // Profil sendiri tetap terbaca saat nonaktif agar AuthWrapper dapat logout.
-      allow get: if signedIn() && (request.auth.uid == userId || admin());
+      // Profil sendiri tetap terbaca ketika akun nonaktif.
+      allow get: if signedIn()
+        && (
+          request.auth.uid == userId
+          || admin()
+        );
+
       allow list: if admin();
-      // Admin pertama harus sudah ada; dibuat melalui jalur tepercaya.
-      allow create: if admin() && newSurveyor(request.resource.data);
-      allow update: if signedIn() && request.auth.uid == userId
+
+      // Admin pertama dibuat melalui jalur tepercaya.
+      allow create: if admin()
+        && newSurveyor(request.resource.data);
+
+      allow update: if signedIn()
+        && request.auth.uid == userId
         && (admin() || surveyor())
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['name', 'email', 'requiresPasswordChange', 'activeSessionId'])
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            'name',
+            'email',
+            'requiresPasswordChange',
+            'activeSessionId'
+          ])
         && changedProfileValuesValid();
-      allow update: if admin() && resource.data.role == 'surveyor'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'isActive'])
-        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['name'])
-          || text(request.resource.data.name, 1, 200))
-        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isActive'])
-          || request.resource.data.isActive is bool);
-      allow delete: if admin() && resource.data.role == 'surveyor';
+
+      allow update: if admin()
+        && resource.data.role == 'surveyor'
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(['name', 'isActive'])
+        && (
+          !request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny(['name'])
+          || text(request.resource.data.name, 1, 200)
+        )
+        && (
+          !request.resource.data.diff(resource.data)
+            .affectedKeys().hasAny(['isActive'])
+          || request.resource.data.isActive is bool
+        );
+
+      allow delete: if admin()
+        && resource.data.role == 'surveyor';
     }
 
     function pruningFields(d) {
-      let fields = ['requestNumber', 'namaPemohon', 'alamatPemohon', 'nomorHp',
-        'emailPemohon', 'nik', 'alamatPohon', 'kecamatan', 'kelurahan', 'alasan',
-        'latitude', 'longitude', 'fotoPohonBase64', 'fotoKtpBase64', 'status',
-        'alasanPenolakan', 'createdAt', 'updatedAt'];
-      return d.keys().hasAll(fields) && d.keys().hasOnly(fields)
-        && text(d.requestNumber, 10, 30) && d.requestNumber.matches('REQ-[0-9]{6,}')
-        && text(d.namaPemohon, 1, 200) && text(d.alamatPemohon, 1, 2000)
-        && text(d.nomorHp, 1, 30) && d.nomorHp.matches('[0-9]+')
-        && text(d.emailPemohon, 3, 320) && d.emailPemohon.matches('[^ @]+@[^ @]+[.][^ @]+')
-        && d.nik is string && d.nik.matches('[0-9]{16}')
+      let fields = [
+        'requestNumber',
+        'namaPemohon',
+        'alamatPemohon',
+        'nomorHp',
+        'emailPemohon',
+        'nik',
+        'alamatPohon',
+        'kecamatan',
+        'kelurahan',
+        'alasan',
+        'latitude',
+        'longitude',
+        'fotoPohonBase64',
+        'fotoKtpBase64',
+        'status',
+        'alasanPenolakan',
+        'createdAt',
+        'updatedAt'
+      ];
+
+      return d.keys().hasAll(fields)
+        && d.keys().hasOnly(fields)
+        && text(d.requestNumber, 10, 30)
+        && d.requestNumber.matches('REQ-[0-9]{6,}')
+        && text(d.namaPemohon, 1, 200)
+        && text(d.alamatPemohon, 1, 2000)
+        && text(d.nomorHp, 1, 30)
+        && d.nomorHp.matches('[0-9]+')
+        && text(d.emailPemohon, 3, 320)
+        && d.emailPemohon.matches('[^ @]+@[^ @]+[.][^ @]+')
+        && d.nik is string
+        && d.nik.matches('[0-9]{16}')
         && text(d.alamatPohon, 1, 2000)
-        && text(d.kecamatan, 1, 200) && text(d.kelurahan, 1, 200)
+        && text(d.kecamatan, 1, 200)
+        && text(d.kelurahan, 1, 200)
         && text(d.alasan, 1, 4000)
-        && ((d.latitude == null && d.longitude == null)
-          || coordinates(d.latitude, d.longitude))
-        && text(d.fotoPohonBase64, 1, 350000) && text(d.fotoKtpBase64, 1, 350000)
-        && d.status == 'menunggu' && d.alasanPenolakan == ''
-        && d.createdAt is timestamp && d.updatedAt is timestamp;
+        && (
+          (d.latitude == null && d.longitude == null)
+          || coordinates(d.latitude, d.longitude)
+        )
+        && text(d.fotoPohonBase64, 1, 350000)
+        && text(d.fotoKtpBase64, 1, 350000)
+        && d.status == 'menunggu'
+        && d.alasanPenolakan == ''
+        && d.createdAt is timestamp
+        && d.updatedAt is timestamp;
     }
 
     match /tree_pruning_requests/{requestId} {
       allow create: if pruningFields(request.resource.data);
-      // Permohonan berisi NIK/KTP; surveyor tidak mendapat akses.
+
+      // Permohonan berisi NIK/KTP; akses hanya untuk admin.
       allow read, delete: if admin();
+
       allow update: if admin()
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status', 'alasanPenolakan', 'updatedAt'])
-        && request.resource.data.status in ['menunggu', 'diverifikasi', 'diproses', 'selesai', 'ditolak']
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            'status',
+            'alasanPenolakan',
+            'updatedAt'
+          ])
+        && request.resource.data.status in [
+          'menunggu',
+          'diverifikasi',
+          'diproses',
+          'selesai',
+          'ditolak'
+        ]
         && text(request.resource.data.alasanPenolakan, 0, 4000)
-        && (request.resource.data.status != 'ditolak' || request.resource.data.alasanPenolakan.size() > 0)
+        && (
+          request.resource.data.status != 'ditolak'
+          || request.resource.data.alasanPenolakan.size() > 0
+        )
         && request.resource.data.updatedAt is timestamp;
     }
 
     match /counters/{counterId} {
-      // Public membutuhkan get + transaksi set pada dokumen ini saja.
+      // Penghitung nomor permohonan publik.
       allow get: if counterId == 'tree_pruning_requests';
+
       allow create: if counterId == 'tree_pruning_requests'
         && request.resource.data.keys().hasOnly(['value'])
-        && request.resource.data.value is int && request.resource.data.value == 1;
+        && request.resource.data.value is int
+        && request.resource.data.value == 1;
+
       allow update: if counterId == 'tree_pruning_requests'
         && request.resource.data.keys().hasOnly(['value'])
-        && resource.data.value is int && resource.data.value >= 0
+        && resource.data.value is int
+        && resource.data.value >= 0
         && request.resource.data.value is int
         && request.resource.data.value == resource.data.value + 1;
+
       allow list, delete: if false;
     }
 

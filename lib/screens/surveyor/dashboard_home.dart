@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/civic_design.dart';
 
 import '../../models/app_user.dart';
 import '../../models/tree_data.dart';
@@ -32,6 +33,13 @@ class DashboardHome extends StatelessWidget {
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          CivicHeading(
+            eyebrow: 'SURVEI POHON • KOTA CIREBON',
+            title: 'Halo, ${user.name}',
+            description:
+                'Setiap pohon yang tercatat membantu pemantauan ruang hijau kota. Lanjutkan pendataan dan pantau hasil survei Anda.',
+          ),
+          const SizedBox(height: 24),
           if (wide)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -54,17 +62,6 @@ class DashboardHome extends StatelessWidget {
   Widget _summary(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Text(
-        'Halo, ${user.name}',
-        style: const TextStyle(
-          color: AppColors.navy,
-          fontWeight: FontWeight.bold,
-          fontSize: 22,
-        ),
-      ),
-      const SizedBox(height: 4),
-      const Text('Ringkasan pendataan pohon Anda'),
-      const SizedBox(height: 20),
       Material(
         color: AppColors.leaf,
         borderRadius: BorderRadius.circular(14),
@@ -130,7 +127,7 @@ class DashboardHome extends StatelessWidget {
                 width,
                 'Rawan tumbang',
                 data.atRiskCount,
-                Icons.warning_amber_rounded,
+                Icons.park_rounded,
                 AppColors.rawanTumbang,
               ),
             ],
@@ -240,7 +237,10 @@ class DashboardHome extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color),
+          if (icon == Icons.park_rounded)
+            TreeSilhouette(color: color)
+          else
+            Icon(icon, color: color),
           const SizedBox(height: 8),
           Text(
             label,

@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'public_test_actions.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:pemetaan_pohon/models/tree_pruning_request.dart';
 import 'package:pemetaan_pohon/screens/public_pruning_request_screen.dart';
 
@@ -12,33 +14,62 @@ final _photo = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
 );
 
-Future<void> _tap(WidgetTester tester, Finder finder) async {
-  await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
+Future<void> _tap(
+  WidgetTester tester,
+  Finder finder, {
+  bool settleBefore = true,
+  bool settleAfter = true,
+}) async {
+  await revealPublicTarget(tester, finder, settle: settleBefore);
   expect(finder.hitTestable(), findsOneWidget);
   await tester.tap(finder.hitTestable());
-  await tester.pumpAndSettle();
+  if (settleAfter) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump(const Duration(milliseconds: 400));
+  }
 }
 
-Future<void> _fill(WidgetTester tester) async {
+Future<void> _fillApplicant(WidgetTester tester) async {
   const fields = {
     'Nama Lengkap *': 'Pemohon Uji',
     'Alamat Pemohon *': 'Alamat uji',
     'Nomor HP *': '081234567890',
     'Email *': 'uji@example.com',
     'Nomor KTP/NIK *': '1234567890123456',
-    'Alamat/Lokasi Pohon *': 'Jalan uji Kesambi',
   };
   for (final entry in fields.entries) {
     final finder = find.byWidgetPredicate(
       (w) => w is TextField && w.decoration?.labelText == entry.key,
     );
     await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
     await tester.enterText(finder, entry.value);
     await tester.pump();
   }
+  FocusManager.instance.primaryFocus?.unfocus();
+}
+
+Future<void> _fill(
+  WidgetTester tester, {
+  bool gps = false,
+  bool otherReason = false,
+}) async {
+  await _fillApplicant(tester);
+  await _tap(tester, find.text('Lanjut'));
+  final address = find.byWidgetPredicate(
+    (w) => w is TextField && w.decoration?.labelText == 'Alamat/Lokasi Pohon *',
+  );
+  await tester.ensureVisible(address);
+  await tester.pumpAndSettle();
+  await tester.enterText(address, 'Jalan uji Kesambi');
+  await tester.pump();
   // Set valid dropdown selections through the public widget callbacks.
-  const selections = ['Kesambi', 'Kesambi', 'Pohon terlalu rimbun'];
+  final selections = [
+    'Kesambi',
+    'Kesambi',
+    otherReason ? 'Lainnya' : 'Pohon terlalu rimbun',
+  ];
   for (var index = 0; index < selections.length; index++) {
     final dropdown = tester.widget<DropdownButtonFormField<String>>(
       find.byType(DropdownButtonFormField<String>).at(index),
@@ -46,21 +77,39 @@ Future<void> _fill(WidgetTester tester) async {
     dropdown.onChanged!(selections[index]);
     await tester.pump();
   }
-  FocusManager.instance.primaryFocus?.unfocus();
-  for (final label in ['Tambahkan Foto Pohon', 'Tambahkan Foto KTP']) {
-    await _tap(tester, find.text(label));
-    await _tap(tester, find.text('Pilih dari Galeri'));
+  if (otherReason) {
+    final reason = find.byWidgetPredicate(
+      (w) =>
+          w is TextField && w.decoration?.labelText == 'Jelaskan alasan Anda',
+    );
+    await tester.ensureVisible(reason);
+    await tester.pumpAndSettle();
+    await tester.enterText(reason, 'Alasan uji lainnya');
+    await tester.pump();
   }
+  FocusManager.instance.primaryFocus?.unfocus();
+  if (gps) await _tap(tester, find.text('Gunakan Lokasi Saya'));
+  for (final label in ['Tambahkan Foto Pohon', 'Tambahkan Foto KTP']) {
+    await _tap(tester, find.text(label), settleAfter: false);
+    await _tap(tester, find.text('Pilih dari Galeri'), settleBefore: false);
+  }
+  await _tap(tester, find.text('Lanjut'));
   await _tap(tester, find.byType(CheckboxListTile));
 }
 
-Widget _screen(Future<String> Function(TreePruningRequest) submit) =>
-    PublicPruningRequestScreen(
-      createRequest: submit,
-      pickImage: (_) async => XFile.fromData(_photo, mimeType: 'image/png'),
-      homeBuilder: (_) =>
-          const Scaffold(key: _homeKey, body: Text('Beranda uji')),
-    );
+Widget _screen(
+  Future<String> Function(TreePruningRequest) submit, {
+  Future<Position> Function()? locate,
+  Future<void> Function(String)? copyNumber,
+  Future<XFile?> Function(ImageSource)? pickImage,
+}) => PublicPruningRequestScreen(
+  createRequest: submit,
+  pickImage:
+      pickImage ?? (_) async => XFile.fromData(_photo, mimeType: 'image/png'),
+  locate: locate,
+  copyNumber: copyNumber,
+  homeBuilder: (_) => const Scaffold(key: _homeKey, body: Text('Beranda uji')),
+);
 
 Future<void> _largeSurface(WidgetTester tester) async {
   await tester.binding.setSurfaceSize(const Size(800, 4000));
@@ -68,6 +117,14 @@ Future<void> _largeSurface(WidgetTester tester) async {
 }
 
 void main() {
+  late bool previousHitTestPolicy;
+  setUp(() {
+    previousHitTestPolicy = WidgetController.hitTestWarningShouldBeFatal;
+    WidgetController.hitTestWarningShouldBeFatal = true;
+  });
+  tearDown(() {
+    WidgetController.hitTestWarningShouldBeFatal = previousHitTestPolicy;
+  });
   for (final replaced in [false, true]) {
     testWidgets('Sukses kembali ke Beranda, replacement=$replaced', (
       tester,
@@ -111,6 +168,7 @@ void main() {
       pending.complete('REQ-000123');
       await tester.pumpAndSettle();
       expect(find.text('Nomor Permohonan: REQ-000123'), findsOneWidget);
+      expect(find.byKey(const ValueKey('public-header-solid')), findsOneWidget);
       expect(find.text('KIRIM PERMOHONAN'), findsNothing);
       await _tap(tester, find.text('Kembali ke Beranda'));
       expect(find.byKey(_homeKey), findsOneWidget);
@@ -169,4 +227,149 @@ void main() {
     expect(find.text('Permohonan Berhasil Dikirim'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('Validasi per langkah dan Back mempertahankan isian', (
+    tester,
+  ) async {
+    await _largeSurface(tester);
+    var writes = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _screen((_) async {
+          writes++;
+          return 'REQ-000126';
+        }),
+      ),
+    );
+    await _tap(tester, find.text('Lanjut'));
+    expect(find.text('Wajib diisi'), findsWidgets);
+    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    await _fillApplicant(tester);
+    await _tap(tester, find.text('Lanjut'));
+    await _tap(tester, find.text('Lanjut'));
+    expect(find.text('Foto pohon wajib diisi.'), findsOneWidget);
+    expect(find.byType(CheckboxListTile), findsNothing);
+    await _tap(tester, find.text('Kembali'));
+    expect(find.text('Pemohon Uji'), findsOneWidget);
+    expect(find.text('1234567890123456'), findsOneWidget);
+    expect(writes, 0);
+  });
+
+  testWidgets(
+    'Ponsel teks 200%: salin gagal/retry, ajukan lagi bersih tanpa kirim otomatis',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(320, 900);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      var writes = 0, copies = 0;
+      String? copied;
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: _screen(
+            (_) async {
+              writes++;
+              return writes == 1 ? 'REQ-000126' : 'REQ-000127';
+            },
+            copyNumber: (number) async {
+              copies++;
+              if (copies == 1) throw StateError('clipboard denied');
+              copied = number;
+            },
+          ),
+        ),
+      );
+      await _fill(tester);
+      await _tap(tester, find.text('KIRIM PERMOHONAN'));
+      await _tap(tester, find.text('Salin nomor'));
+      expect(
+        find.textContaining('Nomor belum berhasil disalin'),
+        findsOneWidget,
+      );
+      expect(writes, 1);
+      await _tap(tester, find.text('Salin nomor'));
+      expect(copied, 'REQ-000126');
+      await _tap(tester, find.text('Ajukan lagi'));
+      expect(writes, 1);
+      expect(find.text('Nomor Permohonan: REQ-000126'), findsNothing);
+      for (final field in tester.widgetList<TextField>(
+        find.byType(TextField),
+      )) {
+        expect(field.controller!.text, isEmpty);
+      }
+      await _fill(tester);
+      await _tap(tester, find.text('KIRIM PERMOHONAN'));
+      expect(writes, 2);
+      expect(find.text('Nomor Permohonan: REQ-000127'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('GPS gagal tetap dapat kirim alamat manual dan alasan Lainnya', (
+    tester,
+  ) async {
+    await _largeSurface(tester);
+    TreePruningRequest? payload;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _screen((request) async {
+          payload = request;
+          return 'REQ-000128';
+        }, locate: () async => throw StateError('denied')),
+      ),
+    );
+    await _fill(tester, gps: true, otherReason: true);
+    await _tap(tester, find.text('KIRIM PERMOHONAN'));
+    expect(payload?.latitude, isNull);
+    expect(payload?.longitude, isNull);
+    expect(payload?.alamatPohon, 'Jalan uji Kesambi');
+    expect(payload?.alasan, 'Alasan uji lainnya');
+    expect(payload?.nik, '1234567890123456');
+    expect(payload?.fotoKtpBase64, base64Encode(_photo));
+  });
+
+  testWidgets(
+    'Foto pengganti terlalu besar tidak menghapus foto/draft sebelumnya',
+    (tester) async {
+      await _largeSurface(tester);
+      var picks = 0;
+      TreePruningRequest? payload;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: _screen(
+            (request) async {
+              payload = request;
+              return 'REQ-000129';
+            },
+            pickImage: (_) async {
+              picks++;
+              final bytes = picks == 3
+                  ? base64Decode(base64Encode(List<int>.filled(262501, 0)))
+                  : _photo;
+              return XFile.fromData(bytes, mimeType: 'image/png');
+            },
+          ),
+        ),
+      );
+      await _fill(tester);
+      await _tap(tester, find.text('Edit lokasi & foto'));
+      await _tap(tester, find.text('Ganti Foto Pohon'), settleAfter: false);
+      await _tap(tester, find.text('Pilih dari Galeri'), settleBefore: false);
+      expect(
+        find.textContaining('Foto kosong atau terlalu besar'),
+        findsOneWidget,
+      );
+      await _tap(tester, find.text('Lanjut'));
+      await _tap(tester, find.text('KIRIM PERMOHONAN'));
+      expect(payload?.fotoPohonBase64, base64Encode(_photo));
+      expect(payload?.fotoKtpBase64, base64Encode(_photo));
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

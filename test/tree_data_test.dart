@@ -11,25 +11,53 @@ void main() {
     'status': 'pending',
   });
 
-  test('Payload TreeData hanya memiliki field database asli', () {
-    final data = tree('t1', 'u1', DateTime(2026, 10, 6)).toMap();
-    expect(data.keys.toSet(), {
-      'latitude',
-      'longitude',
-      'photoBase64',
-      'surveyorId',
-      'surveyorName',
-      'species',
-      'kecamatan',
-      'kelurahan',
-      'namaJalan',
-      'condition',
-      'keteranganKondisi',
-      'timestamp',
-      'status',
-      'qrGenerated',
-    });
-    expect(data['status'], 'pending');
+  test(
+    'Payload TreeData hanya menambah field ranah kewenangan yang disetujui',
+    () {
+      final data = tree('t1', 'u1', DateTime(2026, 10, 6)).toMap();
+      expect(data.keys.toSet(), {
+        'latitude',
+        'longitude',
+        'photoBase64',
+        'surveyorId',
+        'surveyorName',
+        'species',
+        'kecamatan',
+        'kelurahan',
+        'namaJalan',
+        'ranahKewenangan',
+        'condition',
+        'keteranganKondisi',
+        'timestamp',
+        'status',
+        'qrGenerated',
+      });
+      expect(data['status'], 'pending');
+    },
+  );
+
+  test('Kewenangan: data lama, round-trip, edit lain, dan pengosongan', () {
+    final legacy = tree('legacy', 'u1', DateTime(2026, 10, 8));
+    expect(legacy.ranahKewenangan, isEmpty);
+    for (final authority in [
+      'Pusat',
+      'Provinsi',
+      'Kota Cirebon',
+      'Kabupaten Cirebon',
+      'Pengelola taman',
+    ]) {
+      final updated = legacy.copyWith(ranahKewenangan: authority);
+      final readBack = TreeData.fromMap(updated.id, updated.toMap());
+      expect(readBack.ranahKewenangan, authority);
+      expect(readBack.copyWith(species: 'Mahoni').ranahKewenangan, authority);
+      expect(
+        readBack.copyWith(ranahKewenangan: '').toMap()['ranahKewenangan'],
+        '',
+      );
+      expect(readBack.surveyorId, legacy.surveyorId);
+      expect(readBack.status, legacy.status);
+      expect(readBack.qrGenerated, legacy.qrGenerated);
+    }
   });
 
   test('Dashboard memfilter pemilik dan mengurutkan tanpa mengubah sumber', () {

@@ -56,8 +56,8 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: '$width / $scale');
         expect(
-          find.byType(NavigationBar),
-          width >= 1024 && scale == 1 ? findsNothing : findsOneWidget,
+          find.byKey(const ValueKey('public-bottom-navigation')),
+          width >= 1100 && scale == 1 ? findsNothing : findsOneWidget,
         );
       }
     }
@@ -98,7 +98,19 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('Beranda'), warnIfMissed: false);
+    expect(
+      tester
+          .widget<AbsorbPointer>(
+            find
+                .ancestor(
+                  of: find.byKey(const ValueKey('public-bottom-navigation')),
+                  matching: find.byType(AbsorbPointer),
+                )
+                .first,
+          )
+          .absorbing,
+      isTrue,
+    );
     await tester.binding.handlePopRoute();
     await tester.pump();
     expect(navigated, isEmpty);

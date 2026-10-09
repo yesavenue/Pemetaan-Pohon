@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/civic_design.dart';
 
 class SurveyorProfileScreen extends StatefulWidget {
   final AppUser surveyorUser;
@@ -155,7 +156,14 @@ class _SurveyorProfileScreenState extends State<SurveyorProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: widget.embedded ? null : AppBar(title: const Text('Profil')),
+      backgroundColor: const Color(0xFFF3F6F5),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: const Text('Profil'),
+              backgroundColor: AppColors.navy,
+              foregroundColor: Colors.white,
+            ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -163,7 +171,13 @@ class _SurveyorProfileScreenState extends State<SurveyorProfileScreen> {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                const SizedBox(height: 12),
+                const CivicHeading(
+                  eyebrow: 'AKUN SURVEYOR',
+                  title: 'Profil & keamanan',
+                  description:
+                      'Kelola identitas dan akses akun untuk kegiatan survei Anda.',
+                ),
+                const SizedBox(height: 24),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     const avatar = CircleAvatar(
@@ -232,8 +246,7 @@ class _SurveyorProfileScreenState extends State<SurveyorProfileScreen> {
                   showAboutDialog(
                     context: context,
                     applicationName: 'Pemetaan Pohon Kota Cirebon',
-                    applicationIcon: const Icon(
-                      Icons.park,
+                    applicationIcon: const TreeSilhouette(
                       size: 40,
                       color: AppColors.leaf,
                     ),

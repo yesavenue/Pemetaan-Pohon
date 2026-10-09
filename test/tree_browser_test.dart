@@ -50,10 +50,10 @@ void main() {
     await tester.pump();
     expect(find.text('Mangga'), findsOneWidget);
     expect(find.text('Mahoni'), findsNothing);
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Sakit'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Sakit · 1'));
     await tester.pump();
-    expect(find.text('Tidak ada pohon yang sesuai.'), findsOneWidget);
-    await tester.tap(find.text('Reset Filter'));
+    expect(find.text('Tidak ada hasil yang cocok'), findsOneWidget);
+    await tester.tap(find.text('Reset filter'));
     await tester.pump();
     expect(find.text('Mangga'), findsOneWidget);
     expect(find.text('Mahoni'), findsOneWidget);
@@ -111,7 +111,7 @@ void main() {
 
       await showBrowser();
       await tester.enterText(find.byType(TextField), 'Siliwangi');
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Sakit'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Sakit · 1'));
       await tester.pump();
       await hideBrowser();
       await showBrowser();
@@ -121,7 +121,7 @@ void main() {
       );
       expect(
         tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Sakit'))
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Sakit · 1'))
             .selected,
         isTrue,
       );
@@ -129,7 +129,7 @@ void main() {
       expect(find.text('Mangga'), findsNothing);
       await tester.enterText(find.byType(TextField), 'tidak cocok');
       await tester.pump();
-      await tester.tap(find.text('Reset Filter'));
+      await tester.tap(find.text('Reset filter'));
       await tester.pump();
       await hideBrowser();
       await showBrowser();
@@ -139,7 +139,7 @@ void main() {
       );
       expect(
         tester
-            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Semua'))
+            .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Semua · 2'))
             .selected,
         isTrue,
       );

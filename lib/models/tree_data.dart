@@ -59,6 +59,7 @@ class TreeData {
   final String kecamatan;
   final String kelurahan;
   final String namaJalan;
+  final String ranahKewenangan;
   final TreeCondition condition;
   final String keteranganKondisi;
   final DateTime timestamp;
@@ -76,6 +77,7 @@ class TreeData {
     this.kecamatan = '',
     this.kelurahan = '',
     this.namaJalan = '',
+    this.ranahKewenangan = '',
     this.condition = TreeCondition.sehat,
     this.keteranganKondisi = '',
     required this.timestamp,
@@ -97,6 +99,7 @@ class TreeData {
       kecamatan: data['kecamatan'] ?? '',
       kelurahan: data['kelurahan'] ?? '',
       namaJalan: data['namaJalan'] ?? '',
+      ranahKewenangan: (data['ranahKewenangan'] as String?) ?? '',
       condition: TreeCondition.fromString(data['condition'] ?? ''),
       keteranganKondisi: data['keteranganKondisi'] ?? '',
       timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -116,6 +119,7 @@ class TreeData {
       'kecamatan': kecamatan,
       'kelurahan': kelurahan,
       'namaJalan': namaJalan,
+      'ranahKewenangan': ranahKewenangan,
       'condition': condition.toMapString(),
       'keteranganKondisi': keteranganKondisi,
       'timestamp': Timestamp.fromDate(timestamp),
@@ -132,6 +136,7 @@ class TreeData {
     String? kecamatan,
     String? kelurahan,
     String? namaJalan,
+    String? ranahKewenangan,
     TreeCondition? condition,
     String? keteranganKondisi,
     TreeStatus? status,
@@ -147,6 +152,7 @@ class TreeData {
       kecamatan: kecamatan ?? this.kecamatan,
       kelurahan: kelurahan ?? this.kelurahan,
       namaJalan: namaJalan ?? this.namaJalan,
+      ranahKewenangan: ranahKewenangan ?? this.ranahKewenangan,
       condition: condition ?? this.condition,
       keteranganKondisi: keteranganKondisi ?? this.keteranganKondisi,
       timestamp: timestamp,

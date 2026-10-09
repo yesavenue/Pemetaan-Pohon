@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../civic_design.dart';
 
 class TreeThumbnail extends StatelessWidget {
   final String base64;
@@ -17,7 +18,9 @@ class TreeThumbnail extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget placeholder() => Container(
       color: AppColors.leaf.withValues(alpha: .1),
-      child: const Center(child: Icon(Icons.park, color: AppColors.leaf)),
+      child: const Center(
+        child: TreeSilhouette(color: AppColors.leaf, size: 28),
+      ),
     );
     Widget content;
     try {
@@ -32,7 +35,7 @@ class TreeThumbnail extends StatelessWidget {
       content = placeholder();
     }
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(14),
       child: SizedBox(width: size, height: height ?? size, child: content),
     );
   }

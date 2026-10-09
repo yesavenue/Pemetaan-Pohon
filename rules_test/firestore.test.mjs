@@ -180,3 +180,21 @@ test('Koleksi tak dikenal ditolak', async () => {
   await assertFails(setDoc(ref('admin', 'unknown/test'), { value: true }));
   await assertFails(getDoc(ref('admin', 'unknown/test')));
 });
+
+// Optional authority metadata must never grant a role or relax ownership.
+for (const value of ['', 'Pusat', 'Provinsi', 'Kota Cirebon', 'Kabupaten Cirebon', 'Pengelola taman']) {
+  test(`Kewenangan diterima: ${value || 'belum diketahui'}`, () =>
+    assertSucceeds(setDoc(ref('a', 'trees/authority'), tree({ ranahKewenangan: value }))));
+}
+for (const value of [null, 42, {}, 'x'.repeat(121)]) {
+  test(`Kewenangan invalid ditolak: ${JSON.stringify(value).slice(0, 25)}`, () =>
+    assertFails(setDoc(ref('a', 'trees/authority'), tree({ ranahKewenangan: value }))));
+}
+test('Kewenangan dapat diisi dan dikosongkan pemilik; bukan akses admin', async () => {
+  await assertSucceeds(updateDoc(ref('a', 'trees/own'), { ranahKewenangan: 'Pusat' }));
+  await assertSucceeds(updateDoc(ref('a', 'trees/own'), { ranahKewenangan: '' }));
+  await assertFails(updateDoc(ref('a', 'trees/other'), { ranahKewenangan: 'Pusat' }));
+  await assertFails(updateDoc(ref(null, 'trees/own'), { ranahKewenangan: 'Pusat' }));
+  await assertFails(updateDoc(ref('off', 'trees/own'), { ranahKewenangan: 'Pusat' }));
+  await assertFails(updateDoc(ref('a', 'trees/own'), { ranahKewenangan: 'Pusat', status: 'verified' }));
+});

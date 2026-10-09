@@ -16,6 +16,8 @@ import '../utils/cirebon_boundary.dart';
 import '../utils/geo_utils.dart';
 import '../utils/device_location.dart';
 import '../utils/tree_condition_style.dart';
+import '../widgets/tree_authority_field.dart';
+import '../widgets/civic_design.dart';
 import '../utils/tree_options.dart';
 import '../widgets/surveyor/unsaved_changes_guard.dart';
 import 'surveyor/tree_location_picker_screen.dart';
@@ -36,6 +38,11 @@ class TreeInputScreen extends StatefulWidget {
 
 class _TreeInputScreenState extends State<TreeInputScreen> {
   final _treeService = TreeService();
+  final _authorityController = TextEditingController();
+  String? _authority;
+  String get _effectiveAuthority => _authority == 'Lainnya'
+      ? _authorityController.text.trim()
+      : (_authority ?? '');
   final _customSpeciesController = TextEditingController();
   final _kecamatanCustomController = TextEditingController();
   final _kelurahanController = TextEditingController();
@@ -48,6 +55,7 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
   late List<Object?> _initialDraft;
 
   List<TextEditingController> get _draftControllers => [
+    _authorityController,
     _customSpeciesController,
     _kecamatanCustomController,
     _kelurahanController,
@@ -56,6 +64,7 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
   ];
 
   List<Object?> _draftSnapshot() => [
+    _authority,
     _selectedSpecies,
     _selectedKecamatan,
     ..._draftControllers.map((controller) => controller.text),
@@ -134,6 +143,9 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
       _editProblem == null &&
       _isLocationValid &&
       _effectiveSpecies.isNotEmpty &&
+      (_authority != 'Lainnya' ||
+          (_effectiveAuthority.isNotEmpty &&
+              _effectiveAuthority.length <= 120)) &&
       _effectiveKecamatan.isNotEmpty &&
       _namaJalanController.text.trim().isNotEmpty &&
       _photoBase64 != null &&
@@ -163,6 +175,12 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
     _namaJalanController.text = tree.namaJalan;
     _keteranganKondisiController.text = tree.keteranganKondisi;
     _condition = tree.condition;
+    _authority = tree.ranahKewenangan.isEmpty
+        ? null
+        : treeAuthorityOptions.contains(tree.ranahKewenangan)
+        ? tree.ranahKewenangan
+        : 'Lainnya';
+    _authorityController.text = tree.ranahKewenangan;
     _position = LatLng(tree.latitude, tree.longitude);
     if (tree.photoBase64.isNotEmpty) {
       try {
@@ -204,6 +222,7 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
     for (final controller in _draftControllers) {
       controller.removeListener(_draftTextChanged);
     }
+    _authorityController.dispose();
     _customSpeciesController.dispose();
     _kecamatanCustomController.dispose();
     _kelurahanController.dispose();
@@ -535,6 +554,7 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
       kelurahan: _kelurahanController.text.trim(),
       namaJalan: _namaJalanController.text.trim(),
       condition: _condition,
+      ranahKewenangan: _effectiveAuthority,
       keteranganKondisi: _requiresKeterangan
           ? _keteranganKondisiController.text.trim()
           : '',
@@ -568,6 +588,8 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
       _selectedSpecies = null;
       _selectedKecamatan = null;
       _condition = TreeCondition.sehat;
+      _authority = null;
+      _authorityController.clear();
       _customSpeciesController.clear();
       _kecamatanCustomController.clear();
       _kelurahanController.clear();
@@ -596,6 +618,7 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
       kelurahan: _kelurahanController.text.trim(),
       namaJalan: _namaJalanController.text.trim(),
       condition: _condition,
+      ranahKewenangan: _effectiveAuthority,
       keteranganKondisi: _requiresKeterangan
           ? _keteranganKondisiController.text.trim()
           : '',
@@ -621,7 +644,11 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
       hasPreviousStep: _step > 0,
       onPreviousStep: () => setState(() => _step -= 1),
       child: Scaffold(
+        backgroundColor: const Color(0xFFF3F6F5),
         appBar: AppBar(
+          backgroundColor: AppColors.navy,
+          foregroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
           title: Text(_isEditing ? 'Edit Pohon' : 'Tambah Pohon'),
           leading: IconButton(
             tooltip: 'Kembali',
@@ -642,6 +669,22 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
   }
 
   List<Widget> _formFields() => [
+    Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: CivicHeading(
+        eyebrow: 'PENDATAAN POHON • LANGKAH ${_step + 1}/3',
+        title: [
+          'Tentukan lokasi',
+          'Kenali pohonnya',
+          'Lengkapi dokumentasi',
+        ][_step],
+        description: [
+          'Pastikan titik peta sesuai dengan posisi pohon di lapangan.',
+          'Catat jenis, kondisi, dan kewenangan pengelolaan pohon.',
+          'Gunakan foto yang jelas agar hasil survei mudah diperiksa.',
+        ][_step],
+      ),
+    ),
     if (_step == 0) _locationStep(),
     if (_step == 1) _treeStep(),
     if (_step == 2) _photoStep(),
@@ -994,6 +1037,12 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
             ),
           ],
           const SizedBox(height: 20),
+          TreeAuthorityField(
+            selection: _authority,
+            customController: _authorityController,
+            onChanged: (value) => setState(() => _authority = value),
+          ),
+          const SizedBox(height: 20),
           Row(
             children: [
               const Expanded(
@@ -1015,6 +1064,7 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
             children: TreeCondition.values.map((condition) {
               final color = treeConditionColor(condition);
               return ChoiceChip(
+                avatar: TreeSilhouette(color: color, size: 20),
                 label: Text(condition.label),
                 selected: _condition == condition,
                 selectedColor: color.withValues(alpha: .15),
@@ -1114,6 +1164,9 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(_effectiveSpecies),
+                Text(
+                  'Kewenangan: ${_effectiveAuthority.isEmpty ? 'Belum diketahui' : _effectiveAuthority}',
+                ),
                 Text(
                   '${_namaJalanController.text.trim()}, $_effectiveKecamatan',
                 ),
