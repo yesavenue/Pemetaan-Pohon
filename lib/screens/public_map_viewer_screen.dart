@@ -19,6 +19,7 @@ import '../widgets/surveyor/tree_thumbnail.dart';
 class PublicMapViewerScreen extends StatefulWidget {
   final Stream<List<TreeData>>? treeStream;
   final String? initialKecamatan;
+  final TreeCondition? initialCondition;
   final String? initialTreeId;
   final PublicMapState? state;
   final Widget Function(PublicMapState, ValueChanged<TreeData>)? mapBuilder;
@@ -28,6 +29,7 @@ class PublicMapViewerScreen extends StatefulWidget {
     super.key,
     this.treeStream,
     this.initialKecamatan,
+    this.initialCondition,
     this.initialTreeId,
     this.state,
     this.mapBuilder,
@@ -55,13 +57,21 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
   String? _gpsMessage;
   String? _hoveredId;
   String? _focusedId;
+  bool _detailExpanded = false;
   bool get _canMove => _ready || widget.mapBuilder != null;
   @override
   void initState() {
     super.initState();
     _state = widget.state ?? PublicMapState();
-    if (widget.state == null && widget.initialKecamatan != null) {
-      _state.setFilters(PublicMapFilters(kecamatan: widget.initialKecamatan));
+    if (widget.state == null) {
+      _state.setFilters(
+        PublicMapFilters(
+          kecamatan: widget.initialKecamatan,
+          conditions: widget.initialCondition == null
+              ? const {}
+              : {widget.initialCondition!},
+        ),
+      );
     }
     _search.text = _state.query;
     _motion = AnimationController(
@@ -159,6 +169,9 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
   }
 
   void _select(TreeData tree) {
+    if (tree.id != _state.selectedId) {
+      setState(() => _detailExpanded = false);
+    }
     _state.select(tree.id);
     if (_state.selectedId == tree.id && hasPublicMapCoordinates(tree)) {
       _move(LatLng(tree.latitude, tree.longitude), 17);
@@ -766,12 +779,16 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
                   currentChild ?? const SizedBox.shrink(),
               child: selected == null
                   ? const SizedBox.shrink(key: ValueKey('no-selection'))
-                  : ConstrainedBox(
+                  : AnimatedContainer(
                       key: ValueKey('selected-${selected.id}'),
+                      duration: PublicUi.duration(context, 220),
+                      curve: Curves.easeOutCubic,
                       constraints: BoxConstraints(
                         maxHeight: wide
-                            ? (box.maxHeight - 112).clamp(200, 460).toDouble()
-                            : (box.maxHeight * .46).clamp(200, 340).toDouble(),
+                            ? (box.maxHeight - 112).clamp(0, 460).toDouble()
+                            : (box.maxHeight * (_detailExpanded ? .88 : .46))
+                                  .clamp(0, box.maxHeight - 40)
+                                  .toDouble(),
                       ),
                       child: PublicPanel(
                         floating: true,
@@ -780,27 +797,71 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      !wide && _detailExpanded
+                                          ? 'Detail pohon'
+                                          : selected.species,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Tutup kartu pohon',
+                                    onPressed: () {
+                                      setState(() => _detailExpanded = false);
+                                      _state.clearSelection();
+                                    },
+                                    icon: const Icon(Icons.close_rounded),
+                                  ),
+                                ],
+                              ),
+                            ),
                             Flexible(
                               child: SingleChildScrollView(
+                                key: ValueKey(
+                                  'selected-body-${selected.id}-${!wide && _detailExpanded}',
+                                ),
                                 padding: const EdgeInsets.fromLTRB(
                                   16,
                                   16,
                                   16,
                                   0,
                                 ),
-                                child: _selectedCard(selected),
+                                child: !wide && _detailExpanded
+                                    ? _fullDetail(selected)
+                                    : _selectedCard(selected),
                               ),
                             ),
                             Padding(
                               padding: const EdgeInsets.all(12),
                               child: FilledButton.icon(
                                 key: const ValueKey('public-map-detail-action'),
-                                onPressed: _openDetail,
-                                icon: const Icon(
-                                  Icons.arrow_outward_rounded,
+                                onPressed: wide
+                                    ? _openDetail
+                                    : () => setState(
+                                        () =>
+                                            _detailExpanded = !_detailExpanded,
+                                      ),
+                                icon: Icon(
+                                  !wide && _detailExpanded
+                                      ? Icons.expand_more
+                                      : Icons.expand_less,
                                   size: 20,
                                 ),
-                                label: const Text('Lihat detail'),
+                                label: Text(
+                                  !wide && _detailExpanded
+                                      ? 'Ringkas detail'
+                                      : 'Lihat detail',
+                                ),
                               ),
                             ),
                           ],
@@ -879,76 +940,26 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
     ],
   );
 
-  Widget _selectedCard(TreeData tree) => LayoutBuilder(
-    builder: (context, box) {
-      final largeText = MediaQuery.textScalerOf(context).scale(14) > 21;
-      final imageSize = box.maxWidth >= 340 && !largeText ? 104.0 : 72.0;
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget _selectedCard(TreeData tree) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              PublicTreePhoto(
-                tree: tree,
-                width: imageSize,
-                height: imageSize + 16,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            tree.species,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              height: 1.2,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Tutup kartu pohon',
-                          onPressed: _state.clearSelection,
-                          icon: const Icon(Icons.close_rounded, size: 20),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      _address(tree),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        height: 1.4,
-                        color: PublicUi.muted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _condition(tree),
-          if (!largeText)
-            Text(
-              hasPublicMapCoordinates(tree)
-                  ? '${tree.latitude.toStringAsFixed(5)}, ${tree.longitude.toStringAsFixed(5)}'
-                  : 'Koordinat belum valid; lihat informasi lengkap.',
-              style: const TextStyle(fontSize: 12, color: PublicUi.muted),
+          PublicTreePhoto(tree: tree, width: 72, height: 88),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _address(tree),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
             ),
+          ),
         ],
-      );
-    },
+      ),
+      const SizedBox(height: 8),
+      _condition(tree),
+    ],
   );
   Widget _fullDetail(TreeData tree) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../tree_authority_field.dart';
+import '../public/public_visuals.dart';
 import '../../models/app_user.dart';
 import '../../models/tree_data.dart';
 import '../../models/tree_pruning_request.dart';
@@ -23,6 +24,7 @@ class AdminActionDialog extends StatefulWidget {
   final VoidCallback? onDispose;
   final List<Widget> Function(bool busy)? extraActions;
   final bool destructive;
+  final bool canSubmit;
   const AdminActionDialog({
     super.key,
     required this.title,
@@ -35,6 +37,7 @@ class AdminActionDialog extends StatefulWidget {
     this.onDispose,
     this.extraActions,
     this.destructive = false,
+    this.canSubmit = true,
   });
   @override
   State<AdminActionDialog> createState() => _AdminActionDialogState();
@@ -44,7 +47,7 @@ class _AdminActionDialogState extends State<AdminActionDialog> {
   bool _busy = false;
   String? _error;
   Future<void> _run() async {
-    if (!mounted || _busy) return;
+    if (!mounted || _busy || !widget.canSubmit) return;
     final invalid = widget.validate?.call();
     if (invalid != null) {
       setState(() => _error = invalid);
@@ -124,7 +127,7 @@ class _AdminActionDialogState extends State<AdminActionDialog> {
           style: widget.destructive
               ? FilledButton.styleFrom(backgroundColor: Colors.red.shade800)
               : null,
-          onPressed: _busy ? null : _run,
+          onPressed: _busy || !widget.canSubmit ? null : _run,
           child: Text(widget.submitLabel),
         ),
       ],
@@ -458,6 +461,41 @@ Future<bool?> showTreeEditor(
   );
 }
 
+Widget adminTreeReview(TreeData tree) => Column(
+  crossAxisAlignment: CrossAxisAlignment.stretch,
+  children: [
+    _RequestPhoto(label: 'Foto pohon', data: tree.photoBase64),
+    PublicConditionBadge(condition: tree.condition),
+    const SizedBox(height: 12),
+    adminDetail('Jenis pohon', tree.species),
+    adminDetail(
+      'Keterangan kondisi',
+      tree.keteranganKondisi.isEmpty
+          ? 'Tidak ada keterangan tambahan'
+          : tree.keteranganKondisi,
+    ),
+    adminDetail(
+      'Lokasi',
+      [
+        tree.namaJalan,
+        tree.kelurahan,
+        tree.kecamatan,
+      ].where((v) => v.isNotEmpty).join(', '),
+    ),
+    adminDetail(
+      'Ranah kewenangan',
+      tree.ranahKewenangan.isEmpty ? 'Belum diketahui' : tree.ranahKewenangan,
+    ),
+    adminDetail('Surveyor', tree.surveyorName),
+    adminDetail('Tanggal', tree.timestamp.toLocal().toString()),
+    adminDetail('Koordinat', '${tree.latitude}, ${tree.longitude}'),
+    adminDetail(
+      'Status saat ini',
+      tree.status == TreeStatus.verified ? 'Terverifikasi' : 'Menunggu',
+    ),
+  ],
+);
+
 void showAdminTreeDetail(BuildContext context, TreeData tree) =>
     showOwnedAdminDialog<void>(
       context,
@@ -471,7 +509,7 @@ void showAdminTreeDetail(BuildContext context, TreeData tree) =>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TreeThumbnail(base64: tree.photoBase64, size: 600, height: 180),
+              _RequestPhoto(label: 'Foto pohon', data: tree.photoBase64),
               const SizedBox(height: 16),
               adminDetail('Kecamatan', tree.kecamatan),
               adminDetail('Kelurahan', tree.kelurahan),
@@ -606,22 +644,48 @@ Future<bool?> showAdminRequestDetail(
   );
 }
 
-class _RequestPhoto extends StatelessWidget {
+class _RequestPhoto extends StatefulWidget {
   final String label, data;
-  final VoidCallback download;
-  const _RequestPhoto({
-    required this.label,
-    required this.data,
-    required this.download,
-  });
+  final VoidCallback? download;
+  const _RequestPhoto({required this.label, required this.data, this.download});
+  @override
+  State<_RequestPhoto> createState() => _RequestPhotoState();
+}
+
+class _RequestPhotoState extends State<_RequestPhoto> {
+  MemoryImage? _image;
+  @override
+  void initState() {
+    super.initState();
+    _decode();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RequestPhoto oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data != widget.data) {
+      _decode();
+    }
+  }
+
+  void _decode() {
+    _image = null;
+    try {
+      final bytes = base64Decode(widget.data);
+      if (bytes.isNotEmpty) {
+        _image = MemoryImage(bytes);
+      }
+    } on FormatException {
+      /* Use thumbnail fallback. */
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    var hasBytes = false;
-    try {
-      hasBytes = base64Decode(data).isNotEmpty;
-    } catch (_) {
-      /* Fallback */
-    }
+    final label = widget.label;
+    final data = widget.data;
+    final download = widget.download;
+    final image = _image;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -630,11 +694,36 @@ class _RequestPhoto extends StatelessWidget {
           Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           TreeThumbnail(base64: data, size: 600, height: 180),
-          if (hasBytes)
-            OutlinedButton.icon(
-              onPressed: download,
-              icon: const Icon(Icons.download_outlined),
-              label: Text('Download $label'),
+          if (image != null)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  key: ValueKey('admin-photo-open-$label'),
+                  onPressed: () => showOwnedAdminDialog<void>(
+                    context,
+                    allowNested: true,
+                    builder: (photoContext) => Dialog(
+                      backgroundColor: Colors.black,
+                      insetPadding: const EdgeInsets.all(16),
+                      child: SizedBox(
+                        width: 960,
+                        height: MediaQuery.sizeOf(photoContext).height * .85,
+                        child: PublicPhotoViewer(image: image, title: label),
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.zoom_in),
+                  label: Text('Perbesar $label'),
+                ),
+                if (download != null)
+                  OutlinedButton.icon(
+                    onPressed: download,
+                    icon: const Icon(Icons.download_outlined),
+                    label: Text('Download $label'),
+                  ),
+              ],
             ),
         ],
       ),

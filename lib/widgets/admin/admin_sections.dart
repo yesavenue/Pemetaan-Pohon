@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../utils/session_feed.dart';
+import 'admin_dialog_scope.dart';
+import 'admin_export_picker.dart';
 import '../civic_design.dart';
 import '../../utils/tree_condition_style.dart';
 import '../../models/app_user.dart';
@@ -84,7 +87,7 @@ void _notice(BuildContext context, String text) =>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
 /// Header scrolls with content; cards are lazy, tables have a horizontal viewport.
-class _DataFrame<T> extends StatelessWidget {
+class _DataFrame<T> extends StatefulWidget {
   final String title, description, empty;
   final AsyncSnapshot<List<T>> snapshot;
   final List<T> items;
@@ -104,6 +107,34 @@ class _DataFrame<T> extends StatelessWidget {
     required this.table,
   });
   @override
+  State<_DataFrame<T>> createState() => _DataFrameState<T>();
+}
+
+class _DataFrameState<T> extends State<_DataFrame<T>> {
+  int _page = 0;
+  static const _pageSize = 25;
+  String get title => widget.title;
+  String get description => widget.description;
+  String get empty => widget.empty;
+  AsyncSnapshot<List<T>> get snapshot => widget.snapshot;
+  List<T> get items => widget.items;
+  List<Widget> get controls => widget.controls;
+  VoidCallback get retry => widget.retry;
+  Widget Function(T) get card => widget.card;
+  Widget Function(List<T>) get table => widget.table;
+
+  @override
+  void didUpdateWidget(covariant _DataFrame<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.items.length != items.length ||
+        Iterable<int>.generate(
+          items.length,
+        ).any((i) => oldWidget.items[i] != items[i])) {
+      _page = 0;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, c) {
       final ready =
@@ -113,6 +144,8 @@ class _DataFrame<T> extends StatelessWidget {
       final wide =
           c.maxWidth >= 1100 &&
           MediaQuery.textScalerOf(context).scale(14) <= 19;
+      final pages = (items.length / _pageSize).ceil();
+      final pageItems = items.skip(_page * _pageSize).take(_pageSize).toList();
       return CustomScrollView(
         slivers: [
           SliverPadding(
@@ -174,6 +207,31 @@ class _DataFrame<T> extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (wide && pages > 1)
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            'Halaman ${_page + 1} dari $pages • maksimal $_pageSize baris',
+                          ),
+                          IconButton(
+                            tooltip: 'Halaman sebelumnya',
+                            onPressed: _page == 0
+                                ? null
+                                : () => setState(() => _page--),
+                            icon: const Icon(Icons.chevron_left),
+                          ),
+                          IconButton(
+                            tooltip: 'Halaman berikutnya',
+                            onPressed: _page + 1 >= pages
+                                ? null
+                                : () => setState(() => _page++),
+                            icon: const Icon(Icons.chevron_right),
+                          ),
+                        ],
+                      ),
                     if (items.isEmpty)
                       _dataState(
                         icon: snapshot.data!.isEmpty
@@ -196,7 +254,7 @@ class _DataFrame<T> extends StatelessWidget {
                 child: Card(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    child: table(items),
+                    child: table(pageItems),
                   ),
                 ),
               ),
@@ -431,6 +489,7 @@ class AdminTreesPane extends StatefulWidget {
   final Future<String?> Function(String, TreeStatus) setStatus;
   final Future<String?> Function(String) delete;
   final Future<void> Function(List<TreeData>) export;
+  final Future<void> Function(List<TreeData>, String)? exportReport;
   final ValueChanged<bool>? onBusy;
   const AdminTreesPane({
     super.key,
@@ -441,6 +500,7 @@ class AdminTreesPane extends StatefulWidget {
     required this.setStatus,
     required this.delete,
     required this.export,
+    this.exportReport,
     this.onBusy,
   });
   @override
@@ -449,6 +509,7 @@ class AdminTreesPane extends StatefulWidget {
 
 class AdminTreesPaneState extends State<AdminTreesPane> {
   late Stream<List<TreeData>> _stream;
+  late final SessionFeed<List<TreeData>> _feed;
   final _search = TextEditingController();
   TreeStatus? _status;
   TreeCondition? _condition;
@@ -457,11 +518,13 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
   @override
   void initState() {
     super.initState();
-    _stream = widget.load();
+    _feed = SessionFeed(widget.load);
+    _stream = _feed.watch();
   }
 
   @override
   void dispose() {
+    _feed.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -494,55 +557,135 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
     if (mounted && ok == true) _notice(context, 'Data pohon diperbarui.');
   }
 
-  Future<void> _confirm(TreeData t, bool delete) async {
-    final ok = await openAdminAction(
+  Future<void> showTreeReview(TreeData tree) async {
+    if (!canOpenAdminDialog(context)) {
+      return;
+    }
+    final updates = _feed.watch();
+    final ok = await showOwnedAdminDialog<bool>(
       context,
-      AdminActionDialog(
-        title: delete ? 'Hapus data pohon?' : 'Ubah status verifikasi?',
-        submitLabel: delete ? 'Hapus' : 'Simpan',
-        destructive: delete,
-        onBusy: widget.onBusy,
-        content: (_, __) => Text(
-          delete
-              ? 'Hapus ${t.species} secara permanen? Tindakan ini tidak dapat dibatalkan.'
-              : '${t.species}: ${t.status == TreeStatus.pending ? 'Menunggu → Terverifikasi' : 'Terverifikasi → Menunggu'}. Perubahan memengaruhi tampilan publik.',
-        ),
-        operation: () => delete
-            ? widget.delete(t.id)
-            : widget.setStatus(
-                t.id,
-                t.status == TreeStatus.pending
-                    ? TreeStatus.verified
-                    : TreeStatus.pending,
-              ),
+      dismissible: false,
+      builder: (_) => StreamBuilder<List<TreeData>>(
+        stream: updates,
+        initialData: _feed.latest,
+        builder: (context, snapshot) {
+          TreeData? current;
+          for (final row in snapshot.data ?? <TreeData>[]) {
+            if (row.id == tree.id) {
+              current = row;
+              break;
+            }
+          }
+          final row = current;
+          final ready = !snapshot.hasError && snapshot.hasData;
+          return AdminActionDialog(
+            title: row == null ? 'Tinjau pohon' : 'Tinjau ${row.species}',
+            submitLabel: row?.status == TreeStatus.verified
+                ? 'Batalkan verifikasi'
+                : 'Verifikasi',
+            canSubmit: ready && row != null,
+            onBusy: widget.onBusy,
+            content: (_, __) => row == null || !ready
+                ? Text(
+                    snapshot.hasError
+                        ? 'Data terbaru gagal dimuat. Tutup dialog dan coba muat ulang daftar.'
+                        : ready
+                        ? 'Pohon ini sudah dihapus atau tidak lagi tersedia.'
+                        : 'Memuat data terbaru…',
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      adminTreeReview(row),
+                      const SizedBox(height: 12),
+                      Text(
+                        row.status == TreeStatus.pending
+                            ? 'Verifikasi akan menampilkan pohon ini pada peta publik.'
+                            : 'Pembatalan verifikasi akan menyembunyikan pohon ini dari peta publik.',
+                      ),
+                    ],
+                  ),
+            validate: () {
+              final latest = _feed.latest;
+              if (latest == null) {
+                return 'Data terbaru belum tersedia.';
+              }
+              TreeData? found;
+              for (final item in latest) {
+                if (item.id == tree.id) {
+                  found = item;
+                  break;
+                }
+              }
+              if (found == null) {
+                return 'Pohon sudah tidak tersedia.';
+              }
+              if (!identical(found, row)) {
+                return 'Data berubah. Tinjau informasi terbaru sebelum melanjutkan.';
+              }
+              return null;
+            },
+            operation: () => widget.setStatus(
+              tree.id,
+              row!.status == TreeStatus.pending
+                  ? TreeStatus.verified
+                  : TreeStatus.pending,
+            ),
+          );
+        },
       ),
     );
     if (mounted && ok == true) {
-      _notice(
-        context,
-        delete ? 'Data pohon dihapus.' : 'Status pohon diperbarui.',
-      );
+      _notice(context, 'Status pohon diperbarui.');
+    }
+  }
+
+  Future<void> _confirm(TreeData t, bool delete) async {
+    if (!delete) {
+      await showTreeReview(t);
+      return;
+    }
+    final ok = await openAdminAction(
+      context,
+      AdminActionDialog(
+        title: 'Hapus data pohon?',
+        submitLabel: 'Hapus',
+        destructive: true,
+        onBusy: widget.onBusy,
+        content: (_, __) => Text(
+          'Hapus ${t.species} secara permanen? Tindakan ini tidak dapat dibatalkan.',
+        ),
+        operation: () => widget.delete(t.id),
+      ),
+    );
+    if (mounted && ok == true) {
+      _notice(context, 'Data pohon dihapus.');
     }
   }
 
   Widget _actions(TreeData t) => Wrap(
     spacing: 8,
     runSpacing: 8,
+    crossAxisAlignment: WrapCrossAlignment.center,
     children: [
-      TextButton(
-        onPressed: () => showAdminTreeDetail(context, t),
-        child: const Text('Detail'),
+      OutlinedButton.icon(
+        onPressed: () => showTreeReview(t),
+        icon: const Icon(Icons.fact_check_outlined),
+        label: const Text('Tinjau'),
       ),
-      OutlinedButton(
-        onPressed: () => _confirm(t, false),
-        child: Text(
-          t.status == TreeStatus.pending ? 'Verifikasi' : 'Batalkan verifikasi',
-        ),
-      ),
-      TextButton(onPressed: () => _edit(t), child: const Text('Edit')),
-      TextButton(
-        onPressed: () => _confirm(t, true),
-        child: const Text('Hapus'),
+      PopupMenuButton<String>(
+        tooltip: 'Aksi lain untuk ${t.species}',
+        onSelected: (value) {
+          if (value == 'edit') {
+            _edit(t);
+          } else if (value == 'delete') {
+            _confirm(t, true);
+          }
+        },
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'edit', child: Text('Edit')),
+          PopupMenuItem(value: 'delete', child: Text('Hapus')),
+        ],
       ),
     ],
   );
@@ -579,39 +722,12 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
                   onTap: () => setState(() => scope = option),
                 ),
               ),
-            if (scope == 'pilih') ...[
-              Text('${selected.length} dipilih'),
-              TextButton(
-                onPressed: () => setState(() {
-                  if (selected.length == filtered.length) {
-                    selected.clear();
-                  } else {
-                    selected
-                      ..clear()
-                      ..addAll(filtered.map((t) => t.id));
-                  }
-                }),
-                child: Text(
-                  selected.length == filtered.length
-                      ? 'Batal Semua'
-                      : 'Pilih Semua',
-                ),
+            if (scope == 'pilih')
+              AdminExportPicker(
+                items: filtered,
+                selected: selected,
+                onChanged: () => setState(() {}),
               ),
-              for (final t in filtered)
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(t.species),
-                  subtitle: Text(t.kecamatan),
-                  value: selected.contains(t.id),
-                  onChanged: (value) => setState(() {
-                    if (value == true) {
-                      selected.add(t.id);
-                    } else {
-                      selected.remove(t.id);
-                    }
-                  }),
-                ),
-            ],
           ],
         ),
         validate: () =>
@@ -624,13 +740,28 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
             ? 'Pilih setidaknya satu data untuk diekspor.'
             : null,
         operation: () async {
-          await widget.export(
-            scope == 'all'
-                ? all
-                : scope == 'filtered'
-                ? filtered
-                : filtered.where((t) => selected.contains(t.id)).toList(),
-          );
+          final rows = scope == 'all'
+              ? all
+              : scope == 'filtered'
+              ? filtered
+              : filtered.where((t) => selected.contains(t.id)).toList();
+          final filters = [
+            if (_search.text.trim().isNotEmpty)
+              'Pencarian: ${_search.text.trim()}',
+            if (_status != null)
+              'Status: ${_status == TreeStatus.verified ? "Terverifikasi" : "Menunggu"}',
+            if (_condition != null) 'Kondisi: ${_condition!.label}',
+            if (_species != null) 'Jenis: $_species',
+          ];
+          final description = scope == 'all'
+              ? 'Semua data'
+              : '${scope == "pilih" ? "Pilihan manual" : "Hasil filter"}'
+                    '${filters.isEmpty ? " (tanpa filter aktif)" : " • ${filters.join("; ")}"}';
+          if (widget.exportReport != null) {
+            await widget.exportReport!(rows, description);
+          } else {
+            await widget.export(rows);
+          }
           return null;
         },
       ),
@@ -771,7 +902,10 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
             ],
           ),
         ],
-        retry: () => setState(() => _stream = widget.load()),
+        retry: () {
+          _feed.reload();
+          setState(() => _stream = _feed.watch());
+        },
         empty: all.isEmpty
             ? 'Belum ada data pohon.'
             : 'Tidak ada pohon sesuai pencarian/filter.',
@@ -850,7 +984,7 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
                           : 'Menunggu',
                     ),
                   ),
-                  DataCell(SizedBox(width: 420, child: _actions(t))),
+                  DataCell(SizedBox(width: 190, child: _actions(t))),
                 ],
               ),
           ],

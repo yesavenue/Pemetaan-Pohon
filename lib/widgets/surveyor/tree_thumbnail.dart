@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../civic_design.dart';
 
-class TreeThumbnail extends StatelessWidget {
+class TreeThumbnail extends StatefulWidget {
   final String base64;
   final double size;
   final double? height;
@@ -15,6 +15,37 @@ class TreeThumbnail extends StatelessWidget {
   });
 
   @override
+  State<TreeThumbnail> createState() => _TreeThumbnailState();
+}
+
+class _TreeThumbnailState extends State<TreeThumbnail> {
+  MemoryImage? _image;
+  @override
+  void initState() {
+    super.initState();
+    _decode();
+  }
+
+  @override
+  void didUpdateWidget(covariant TreeThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.base64 != widget.base64) {
+      _decode();
+    }
+  }
+
+  void _decode() {
+    _image = null;
+    try {
+      if (widget.base64.isNotEmpty) {
+        _image = MemoryImage(base64Decode(widget.base64));
+      }
+    } on FormatException {
+      /* Use placeholder. */
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     Widget placeholder() => Container(
       color: AppColors.leaf.withValues(alpha: .1),
@@ -22,21 +53,28 @@ class TreeThumbnail extends StatelessWidget {
         child: TreeSilhouette(color: AppColors.leaf, size: 28),
       ),
     );
-    Widget content;
-    try {
-      content = base64.isEmpty
-          ? placeholder()
-          : Image.memory(
-              base64Decode(base64),
-              fit: BoxFit.cover,
-              errorBuilder: (_, error, stack) => placeholder(),
-            );
-    } on FormatException {
-      content = placeholder();
-    }
+    final image = _image;
+    final content = image == null
+        ? placeholder()
+        : Image(
+            image: ResizeImage.resizeIfNeeded(
+              (widget.size * MediaQuery.devicePixelRatioOf(context))
+                  .ceil()
+                  .clamp(1, 1600),
+              null,
+              image,
+            ),
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (_, error, stack) => placeholder(),
+          );
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
-      child: SizedBox(width: size, height: height ?? size, child: content),
+      child: SizedBox(
+        width: widget.size,
+        height: widget.height ?? widget.size,
+        child: content,
+      ),
     );
   }
 }

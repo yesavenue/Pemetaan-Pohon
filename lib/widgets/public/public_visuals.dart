@@ -168,7 +168,7 @@ class _PinPainter extends CustomPainter {
       oldDelegate.color != color;
 }
 
-class PublicTreePhoto extends StatelessWidget {
+class PublicTreePhoto extends StatefulWidget {
   final TreeData tree;
   final double width;
   final double height;
@@ -179,20 +179,51 @@ class PublicTreePhoto extends StatelessWidget {
     this.height = 72,
   });
   @override
-  Widget build(BuildContext context) {
+  State<PublicTreePhoto> createState() => _PublicTreePhotoState();
+}
+
+class _PublicTreePhotoState extends State<PublicTreePhoto> {
+  MemoryImage? _image;
+  @override
+  void initState() {
+    super.initState();
+    _decode();
+  }
+
+  @override
+  void didUpdateWidget(covariant PublicTreePhoto oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tree.photoBase64 != widget.tree.photoBase64) {
+      _decode();
+    }
+  }
+
+  void _decode() {
+    _image = null;
     try {
-      if (tree.photoBase64.isNotEmpty) {
-        return PublicPhotoFrame(
-          image: MemoryImage(base64Decode(tree.photoBase64)),
-          title: tree.species,
-          width: width,
-          height: height,
-        );
+      if (widget.tree.photoBase64.isNotEmpty) {
+        _image = MemoryImage(base64Decode(widget.tree.photoBase64));
       }
     } on FormatException {
-      // Invalid stored photos keep the same footprint and never break the map.
+      /* Keep the same placeholder footprint. */
     }
-    return SizedBox(width: width, height: height, child: const _MissingPhoto());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final image = _image;
+    return image == null
+        ? SizedBox(
+            width: widget.width,
+            height: widget.height,
+            child: const _MissingPhoto(),
+          )
+        : PublicPhotoFrame(
+            image: image,
+            title: widget.tree.species,
+            width: widget.width,
+            height: widget.height,
+          );
   }
 }
 
@@ -239,56 +270,67 @@ class _PublicPhotoFrameState extends State<PublicPhotoFrame> {
     height: widget.height,
     child: ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: Image(
-        image: widget.image,
-        fit: BoxFit.cover,
-        errorBuilder: (_, error, stack) => const _MissingPhoto(),
-        frameBuilder: (context, child, frame, wasSynchronous) => Stack(
-          fit: StackFit.expand,
-          children: [
-            AnimatedScale(
-              scale:
-                  !MediaQuery.of(context).disableAnimations &&
-                      (_hovered || _focused)
-                  ? 1.04
-                  : 1,
-              duration: PublicUi.duration(context, 180),
-              curve: Curves.easeOutCubic,
-              child: child,
-            ),
-            Positioned.fill(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  key: ValueKey('photo-open-${widget.title}'),
-                  onHover: (value) => setState(() => _hovered = value),
-                  onFocusChange: (value) => setState(() => _focused = value),
-                  onTap: () =>
-                      showPublicPhoto(context, widget.image, widget.title),
-                  child: Semantics(
-                    button: true,
-                    label: 'Perbesar foto ${widget.title}',
-                    child: Align(
-                      alignment: Alignment.bottomRight,
-                      child: Container(
-                        margin: const EdgeInsets.all(6),
-                        padding: const EdgeInsets.all(5),
-                        decoration: BoxDecoration(
-                          color: PublicUi.ink.withValues(alpha: .8),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.open_in_full_rounded,
-                          color: Colors.white,
-                          size: 16,
+      child: LayoutBuilder(
+        builder: (context, bounds) => Image(
+          image: ResizeImage.resizeIfNeeded(
+            bounds.maxWidth.isFinite
+                ? (bounds.maxWidth * MediaQuery.devicePixelRatioOf(context))
+                      .ceil()
+                      .clamp(1, 1600)
+                : null,
+            null,
+            widget.image,
+          ),
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, error, stack) => const _MissingPhoto(),
+          frameBuilder: (context, child, frame, wasSynchronous) => Stack(
+            fit: StackFit.expand,
+            children: [
+              AnimatedScale(
+                scale:
+                    !MediaQuery.of(context).disableAnimations &&
+                        (_hovered || _focused)
+                    ? 1.04
+                    : 1,
+                duration: PublicUi.duration(context, 180),
+                curve: Curves.easeOutCubic,
+                child: child,
+              ),
+              Positioned.fill(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    key: ValueKey('photo-open-${widget.title}'),
+                    onHover: (value) => setState(() => _hovered = value),
+                    onFocusChange: (value) => setState(() => _focused = value),
+                    onTap: () =>
+                        showPublicPhoto(context, widget.image, widget.title),
+                    child: Semantics(
+                      button: true,
+                      label: 'Perbesar foto ${widget.title}',
+                      child: Align(
+                        alignment: Alignment.bottomRight,
+                        child: Container(
+                          margin: const EdgeInsets.all(6),
+                          padding: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            color: PublicUi.ink.withValues(alpha: .8),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.open_in_full_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     ),
@@ -310,7 +352,7 @@ Future<void> showPublicPhoto(
     transitionDuration: duration,
     pageBuilder: (_, animation, secondaryAnimation) => Theme(
       data: theme,
-      child: _PhotoViewer(image: image, title: title),
+      child: PublicPhotoViewer(image: image, title: title),
     ),
     transitionBuilder: (_, animation, secondaryAnimation, child) =>
         FadeTransition(
@@ -325,15 +367,19 @@ Future<void> showPublicPhoto(
   );
 }
 
-class _PhotoViewer extends StatefulWidget {
+class PublicPhotoViewer extends StatefulWidget {
   final ImageProvider image;
   final String title;
-  const _PhotoViewer({required this.image, required this.title});
+  const PublicPhotoViewer({
+    super.key,
+    required this.image,
+    required this.title,
+  });
   @override
-  State<_PhotoViewer> createState() => _PhotoViewerState();
+  State<PublicPhotoViewer> createState() => _PublicPhotoViewerState();
 }
 
-class _PhotoViewerState extends State<_PhotoViewer>
+class _PublicPhotoViewerState extends State<PublicPhotoViewer>
     with SingleTickerProviderStateMixin {
   final _transform = TransformationController();
   final _viewport = GlobalKey();
@@ -446,6 +492,7 @@ class _PhotoViewerState extends State<_PhotoViewer>
                       child: Image(
                         image: widget.image,
                         fit: BoxFit.contain,
+                        filterQuality: FilterQuality.medium,
                         errorBuilder: (_, error, stack) => const Center(
                           child: Text(
                             'Foto tidak dapat dibaca.',

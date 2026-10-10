@@ -83,6 +83,7 @@ class _PublicPruningRequestScreenState
   double _stepDirection = 1;
   final _attempted = [false, false, false];
   final _scroll = ScrollController();
+  final _stepAnchor = GlobalKey();
   final _fieldKeys = <TextEditingController, GlobalKey>{};
   final _fieldFocus = <TextEditingController, FocusNode>{};
   final _controlKeys = List.generate(5, (_) => GlobalKey());
@@ -150,7 +151,26 @@ class _PublicPruningRequestScreenState
       _step = value;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _scroll.hasClients) _scroll.jumpTo(0);
+      if (!mounted || !_scroll.hasClients) return;
+      final box = _stepAnchor.currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.hasSize) return;
+      final target =
+          (_scroll.offset +
+                  box.localToGlobal(Offset.zero).dy -
+                  PublicUi.headerHeight(context) -
+                  MediaQuery.paddingOf(context).top -
+                  12)
+              .clamp(0.0, _scroll.position.maxScrollExtent)
+              .toDouble();
+      if (MediaQuery.of(context).disableAnimations) {
+        _scroll.jumpTo(target);
+      } else {
+        _scroll.animateTo(
+          target,
+          duration: PublicUi.duration(context, 240),
+          curve: Curves.easeOutCubic,
+        );
+      }
     });
   }
 
@@ -636,6 +656,7 @@ class _PublicPruningRequestScreenState
                             ),
                           ),
                           Padding(
+                            key: _stepAnchor,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -57,10 +57,13 @@ TreePruningRequest request({PruningStatus status = PruningStatus.menunggu}) =>
       status: status,
     );
 Widget app(Widget child, {double scale = 1}) => MaterialApp(
-  builder: (context, child) => MediaQuery(
-    data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
-    child: child!,
-  ),
+  builder:
+      (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(scale)),
+        child: child!,
+      ),
   home: Scaffold(body: child),
 );
 Finder field(String label) => find.byWidgetPredicate(
@@ -104,6 +107,7 @@ Future<void> mobile(WidgetTester tester) async {
 AdminTreesPane treesPane({
   Stream<List<TreeData>> Function()? load,
   Future<void> Function(List<TreeData>)? export,
+  Future<void> Function(List<TreeData>, String)? exportReport,
   Future<String?> Function(String, TreeStatus)? status,
   Future<String?> Function(TreeData)? update,
 }) => AdminTreesPane(
@@ -116,9 +120,47 @@ AdminTreesPane treesPane({
   setStatus: status ?? (_, __) async => null,
   delete: (_) async => null,
   export: export ?? (_) async {},
+  exportReport: exportReport,
 );
 
 void main() {
+  testWidgets(
+    'Pagination desktop membatasi baris, ekspor tetap seluruh hasil filter',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1440, 1000);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final rows = List.generate(60, (i) => tree('${i + 1}'));
+      List<TreeData>? exported;
+      String? reportScope;
+      await tester.pumpWidget(
+        app(
+          treesPane(
+            load: () => Stream.value(rows),
+            exportReport: (items, scope) async {
+              exported = items;
+              reportScope = scope;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<DataTable>(find.byType(DataTable)).rows,
+        hasLength(25),
+      );
+      await tap(tester, find.byTooltip('Halaman berikutnya'));
+      expect(find.text('Halaman 2 dari 3 • maksimal 25 baris'), findsOneWidget);
+      await tap(tester, find.text('Export Excel'));
+      await tap(tester, find.text('Export'));
+      expect(exported, hasLength(60));
+      expect(reportScope, contains('Hasil filter'));
+      expect(exported!.map((t) => t.id).toSet(), rows.map((t) => t.id).toSet());
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   late bool oldPolicy;
   setUp(() {
     oldPolicy = WidgetController.hitTestWarningShouldBeFatal;
@@ -171,11 +213,12 @@ void main() {
       await tap(tester, find.text('Batal'));
       expect(deletes, 0);
       await tap(tester, find.text('Reset Password'));
-      final callback = tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey('admin-dialog-submit')),
-          )
-          .onPressed!;
+      final callback =
+          tester
+              .widget<FilledButton>(
+                find.byKey(const ValueKey('admin-dialog-submit')),
+              )
+              .onPressed!;
       callback();
       callback();
       await tester.pump();
@@ -257,12 +300,13 @@ void main() {
       stream.add([tree('1')]);
       await tester.pumpAndSettle();
       await tap(tester, find.widgetWithText(ChoiceChip, 'Menunggu'));
-      await tap(tester, find.text('Verifikasi'));
-      final callback = tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey('admin-dialog-submit')),
-          )
-          .onPressed!;
+      await tap(tester, find.text('Tinjau'));
+      final callback =
+          tester
+              .widget<FilledButton>(
+                find.byKey(const ValueKey('admin-dialog-submit')),
+              )
+              .onPressed!;
       callback();
       callback();
       await tester.pump();
@@ -295,17 +339,19 @@ void main() {
       await tester.pumpWidget(
         app(
           Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showTreeEditor(
-                context,
-                admin: admin,
-                save: (t) async {
-                  created = t;
-                  return null;
-                },
-              ),
-              child: const Text('Tambah'),
-            ),
+            builder:
+                (context) => TextButton(
+                  onPressed:
+                      () => showTreeEditor(
+                        context,
+                        admin: admin,
+                        save: (t) async {
+                          created = t;
+                          return null;
+                        },
+                      ),
+                  child: const Text('Tambah'),
+                ),
           ),
         ),
       );
@@ -358,18 +404,20 @@ void main() {
       await tester.pumpWidget(
         app(
           Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showTreeEditor(
-                context,
-                admin: admin,
-                tree: original,
-                save: (t) async {
-                  updated = t;
-                  return null;
-                },
-              ),
-              child: const Text('Edit'),
-            ),
+            builder:
+                (context) => TextButton(
+                  onPressed:
+                      () => showTreeEditor(
+                        context,
+                        admin: admin,
+                        tree: original,
+                        save: (t) async {
+                          updated = t;
+                          return null;
+                        },
+                      ),
+                  child: const Text('Edit'),
+                ),
           ),
         ),
       );
@@ -444,11 +492,12 @@ void main() {
         'Alasan Penolakan *',
         'Lokasi bukan kewenangan dinas',
       );
-      final callback = tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey('admin-dialog-submit')),
-          )
-          .onPressed!;
+      final callback =
+          tester
+              .widget<FilledButton>(
+                find.byKey(const ValueKey('admin-dialog-submit')),
+              )
+              .onPressed!;
       callback();
       callback();
       await tester.pump();
@@ -490,29 +539,91 @@ void main() {
       final retry = find.text('Coba lagi');
       await reveal(tester, retry);
       expect(retry.hitTestable(), findsOneWidget);
-      await tester.tap(retry.hitTestable());
+      // Beri kesempatan proses async pembatalan subscription selesai,
+      // termasuk pekerjaan yang berjalan di luar waktu simulasi widget test.
+      await tester.runAsync(() async {
+        await tester.tap(retry.hitTestable());
+
+        for (var attempt = 0; attempt < 20; attempt++) {
+          if (loads >= 2 && second.hasListener) {
+            break;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
+
       await tester.pump();
-      expect(loads, 2);
-      expect(second.hasListener, true);
-      second.add([tree('1')]);
-      await tester.pumpAndSettle();
+
+      expect(
+        loads,
+        2,
+        reason: 'Tombol retry harus membuka sumber data baru tepat satu kali.',
+      );
+      expect(
+        first.hasListener,
+        isFalse,
+        reason: 'Subscription lama harus dibatalkan sebelum retry selesai.',
+      );
+      expect(
+        second.hasListener,
+        isTrue,
+        reason: 'Sumber data kedua harus sudah didengarkan.',
+      );
+
+      Future<void> emitRows(List<TreeData> rows) async {
+        await tester.runAsync(() async {
+          second.add(rows);
+          await Future<void>.delayed(Duration.zero);
+        });
+        await tester.pumpAndSettle();
+      }
+
+      // Pastikan data pertama benar-benar sudah tampil.
+      await emitRows([tree('1')]);
+
+      expect(find.text('1 hasil dari 1 data.'), findsOneWidget);
+
+      final speciesDropdown = find.byType(DropdownButtonFormField<String?>);
+
+      expect(speciesDropdown, findsOneWidget);
+
       tester
-          .widget<DropdownButtonFormField<String?>>(
-            find.byType(DropdownButtonFormField<String?>),
-          )
+          .widget<DropdownButtonFormField<String?>>(speciesDropdown)
           .onChanged!('Mahoni');
+
       await tester.pumpAndSettle();
-      second.add([tree('2')]);
-      await tester.pumpAndSettle();
+
+      // Pastikan pilihan filter tersimpan sebelum data berubah.
+      expect(
+        tester.state<FormFieldState<String?>>(speciesDropdown).value,
+        'Mahoni',
+      );
+
+      // Data terbaru hanya berisi Mangga; filter Mahoni tetap aktif.
+      await emitRows([tree('2')]);
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('0 hasil dari 1 data.'), findsOneWidget);
       expect(
         find.text('Tidak ada pohon sesuai pencarian/filter.'),
         findsOneWidget,
       );
+
       await tap(tester, find.text('Reset filter'));
+
       expect(find.text('1 hasil dari 1 data.'), findsOneWidget);
       expect(loads, 2);
+      expect(first.hasListener, isFalse);
+      expect(second.hasListener, isTrue);
       expect(tester.takeException(), isNull);
+
       await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+
+      expect(second.hasListener, isFalse);
     },
   );
 }

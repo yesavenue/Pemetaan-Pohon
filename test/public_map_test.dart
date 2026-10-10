@@ -54,6 +54,38 @@ Widget app(Widget child, {double scale = 1}) => MaterialApp(
 );
 
 void main() {
+  testWidgets(
+    'Filter kondisi awal hanya menampilkan pohon terverifikasi yang sesuai',
+    (tester) async {
+      await tester.pumpWidget(
+        app(
+          PublicMapViewerScreen(
+            initialCondition: TreeCondition.sakit,
+            treeStream: Stream.value([
+              sample('1'),
+              sample('2', condition: TreeCondition.sakit),
+              sample(
+                '3',
+                condition: TreeCondition.sakit,
+                status: TreeStatus.pending,
+              ),
+            ]),
+            mapBuilder: fakeMap,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('marker-1')), findsNothing);
+      expect(find.byKey(const ValueKey('marker-2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('marker-3')), findsNothing);
+      await revealPublicTarget(tester, find.text('Reset filter'));
+      await tester.tap(find.text('Reset filter').hitTestable());
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('marker-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('marker-3')), findsNothing);
+    },
+  );
+
   setUp(() {
     WidgetController.hitTestWarningShouldBeFatal = true;
   });
@@ -332,9 +364,17 @@ void main() {
             find.byKey(const ValueKey('public-map-detail-dialog')),
             findsOneWidget,
           );
+          await tester.tap(find.byTooltip('Tutup'));
+        } else {
+          expect(
+            find.byKey(const ValueKey('public-map-detail-dialog')),
+            findsNothing,
+          );
+          await revealPublicTarget(tester, action);
+          await tester.tap(action);
         }
-        await tester.tap(find.byTooltip('Tutup'));
         await tester.pumpAndSettle();
+        expect(find.text('Detail pohon'), findsNothing);
         expect(find.byKey(const ValueKey('selected-1')), findsOneWidget);
         expect(tester.takeException(), isNull, reason: '$scenario');
         await tester.pumpWidget(const SizedBox.shrink());

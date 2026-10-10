@@ -76,6 +76,8 @@ class AdminShell extends StatelessWidget {
                     children: [
                       Image.asset(
                         appLogoAsset,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.medium,
                         width: 40,
                         height: 40,
                         errorBuilder: (_, error, stack) => const Icon(

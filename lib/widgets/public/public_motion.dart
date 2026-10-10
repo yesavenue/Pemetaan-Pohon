@@ -80,6 +80,7 @@ class _PublicScrollImageState extends State<PublicScrollImage> {
           child: Image(
             image: widget.image,
             fit: BoxFit.cover,
+            filterQuality: FilterQuality.medium,
             gaplessPlayback: true,
             errorBuilder: (_, error, stack) =>
                 const ColoredBox(color: PublicUi.ink),

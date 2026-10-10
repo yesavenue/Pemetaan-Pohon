@@ -87,7 +87,8 @@ void main() {
           alamatPohon: 'Jalan uji',
           alasan: 'Rimbun',
           fotoPohonBase64: '',
-          fotoKtpBase64: '',
+          fotoKtpBase64:
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
           createdAt: DateTime(2026),
           updatedAt: DateTime(2026),
         ),
@@ -114,8 +115,16 @@ void main() {
       await tester.tap(review.hitTestable());
       await tester.pumpAndSettle();
       expect(find.text('1234567890123456'), findsOneWidget);
+      final zoom = find.byKey(const ValueKey('admin-photo-open-Foto KTP'));
+      await tester.ensureVisible(zoom);
+      await tester.pumpAndSettle();
+      expect(zoom.hitTestable(), findsOneWidget);
+      await tester.tap(zoom.hitTestable());
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('public-photo-viewer')), findsOneWidget);
       refresh(() => signedIn = false);
       await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('public-photo-viewer')), findsNothing);
       expect(find.byType(AdminShell), findsNothing);
       expect(find.byType(AdminActionDialog), findsNothing);
       expect(find.text('1234567890123456'), findsNothing);

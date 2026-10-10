@@ -24,7 +24,13 @@ class PublicFooter extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Image.asset(appLogoAsset, width: 40, height: 40),
+                      Image.asset(
+                        appLogoAsset,
+                        width: 40,
+                        height: 40,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.medium,
+                      ),
                       const SizedBox(width: 12),
                       const Expanded(
                         child: Text(

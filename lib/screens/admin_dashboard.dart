@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../utils/session_feed.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -41,6 +42,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final _authService = AuthService();
   final _treeService = TreeService();
   final _requestService = PruningRequestService();
+  late final _treesFeed = SessionFeed<List<TreeData>>(_treeService.streamTrees);
+  late final _usersFeed = SessionFeed<List<AppUser>>(
+    _authService.streamSurveyors,
+  );
+  late final _requestsFeed = SessionFeed<List<TreePruningRequest>>(
+    _requestService.streamRequests,
+  );
+  @override
+  void dispose() {
+    _treesFeed.dispose();
+    _usersFeed.dispose();
+    _requestsFeed.dispose();
+    super.dispose();
+  }
+
   final _requestKey = GlobalKey<AdminRequestsPaneState>();
   final _visited = <int>{0};
   final _dialogContextKey = GlobalKey();
@@ -153,8 +169,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
-  Future<void> _exportTrees(List<TreeData> trees) async {
-    final bytes = buildTreeExcelBytes(trees);
+  Future<void> _exportTrees(
+    List<TreeData> trees, {
+    String scope = 'Semua data',
+  }) async {
+    final bytes = buildTreeExcelBytes(
+      trees,
+      scope: scope,
+      preparedBy: widget.adminUser.name,
+    );
     final filename =
         'data_pohon_${DateTime.now().toIso8601String().substring(0, 10)}.xlsx';
     downloadBytesAsFile(
@@ -283,9 +306,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
               enabled: _selectedIndex == 0,
               child: AdminOverview(
                 adminName: widget.adminUser.name,
-                loadSurveyors: _authService.streamSurveyors,
-                loadTrees: _treeService.streamTrees,
-                loadRequests: _requestService.streamRequests,
+                loadSurveyors: _usersFeed.loadView,
+                loadTrees: _treesFeed.loadView,
+                loadRequests: _requestsFeed.loadView,
                 onAddSurveyor: _showAddSurveyorDialog,
                 onAddTree: () => _selectPage(
                   2,
@@ -302,8 +325,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   afterMount: () =>
                       _requestKey.currentState?.showWaitingRequests(),
                 ),
-                onReviewTree: (tree) =>
-                    _showTreeDetailDialog(_dialogContext, tree),
+                onReviewTree: (tree) => _selectPage(
+                  2,
+                  afterMount: () =>
+                      _dataPohonKey.currentState?.showTreeReview(tree),
+                ),
                 onReviewRequest: (request) => _selectPage(
                   3,
                   afterMount: () =>
@@ -314,7 +340,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
             if (_visited.contains(1))
               AdminSurveyorPane(
-                load: _authService.streamSurveyors,
+                load: _usersFeed.loadView,
                 setActive: _authService.setSurveyorActiveStatus,
                 resetPassword: _authService.sendPasswordResetEmail,
                 deleteProfile: _authService.deleteSurveyorProfile,
@@ -326,12 +352,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
               AdminTreesPane(
                 key: _dataPohonKey,
                 admin: widget.adminUser,
-                load: _treeService.streamTrees,
+                load: _treesFeed.loadView,
                 create: _treeService.createTree,
                 update: _treeService.updateTree,
                 setStatus: _treeService.setTreeStatus,
                 delete: _treeService.deleteTree,
                 export: _exportTrees,
+                exportReport: (rows, scope) => _exportTrees(rows, scope: scope),
                 onBusy: _setBusy,
               )
             else
@@ -339,7 +366,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             if (_visited.contains(3))
               AdminRequestsPane(
                 key: _requestKey,
-                load: _requestService.streamRequests,
+                load: _requestsFeed.loadView,
                 update: (id, status, reason) => _requestService.updateStatus(
                   id,
                   status,

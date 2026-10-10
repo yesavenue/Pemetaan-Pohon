@@ -293,6 +293,8 @@ class PublicNavbar extends StatelessWidget implements PreferredSizeWidget {
                         children: [
                           Image.asset(
                             appLogoAsset,
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.medium,
                             width: wide ? 40 : 32,
                             height: wide ? 40 : 32,
                             errorBuilder: (_, error, stack) =>

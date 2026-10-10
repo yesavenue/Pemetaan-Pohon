@@ -201,11 +201,14 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
                                 ),
                               const SizedBox(height: 24),
                               OutlinedButton.icon(
-                                onPressed: () => navigateToPublicPage(
-                                  context,
-                                  PublicPage.peta,
-                                  PublicPage.beranda,
-                                ),
+                                onPressed: () =>
+                                    Navigator.of(context).pushReplacement(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => PublicMapViewerScreen(
+                                          initialCondition: _previewCondition,
+                                        ),
+                                      ),
+                                    ),
                                 icon: const Icon(Icons.arrow_outward),
                                 label: const Text('Buka peta lengkap'),
                               ),
@@ -222,7 +225,10 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
                                 : widget.mapPreviewBuilder?.call(
                                         previewTrees,
                                       ) ??
-                                      PublicHomeMapPreview(trees: previewTrees),
+                                      PublicHomeMapPreview(
+                                        trees: previewTrees,
+                                        initialCondition: _previewCondition,
+                                      ),
                           );
                           return PublicReveal(
                             child:
@@ -651,8 +657,14 @@ class _Message extends StatelessWidget {
 
 class PublicHomeMapPreview extends StatefulWidget {
   final List<TreeData> trees;
+  final TreeCondition? initialCondition;
   final Widget Function(List<TreeData>, ValueChanged<TreeData>)? mapBuilder;
-  const PublicHomeMapPreview({super.key, required this.trees, this.mapBuilder});
+  const PublicHomeMapPreview({
+    super.key,
+    required this.trees,
+    this.mapBuilder,
+    this.initialCondition,
+  });
   @override
   State<PublicHomeMapPreview> createState() => _MapPreviewState();
 }
@@ -724,7 +736,10 @@ class _MapPreviewState extends State<PublicHomeMapPreview> {
         FilledButton.icon(
           onPressed: () => Navigator.of(context).pushReplacement(
             MaterialPageRoute<void>(
-              builder: (_) => PublicMapViewerScreen(initialTreeId: tree.id),
+              builder: (_) => PublicMapViewerScreen(
+                initialTreeId: tree.id,
+                initialCondition: widget.initialCondition,
+              ),
             ),
           ),
           icon: const Icon(Icons.arrow_outward_rounded, size: 18),
