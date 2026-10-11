@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { before, beforeEach, after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, runTransaction, Timestamp } from 'firebase/firestore';
+import { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, runTransaction, Timestamp, writeBatch, query, where, serverTimestamp } from 'firebase/firestore';
 
 // Test ini sengaja hanya mengizinkan emulator lokal + project demo.
 const host = process.env.FIRESTORE_EMULATOR_HOST;
@@ -19,7 +19,8 @@ const tree = (extra = {}) => ({
   surveyorId: 'a', surveyorName: 'a', species: 'Mangga',
   kecamatan: 'Kejaksan', kelurahan: 'Kesenden', namaJalan: 'Jalan Uji',
   condition: 'sehat', keteranganKondisi: '', timestamp: stamp,
-  status: 'pending', qrGenerated: false, ...extra,
+  status: 'pending', qrGenerated: false, revision: 0,
+  rejectionReason: '', reviewedAt: null, reviewReadAt: null, ...extra,
 });
 const pruning = (extra = {}) => ({
   requestNumber: 'REQ-000001', namaPemohon: 'Pemohon Uji',
@@ -53,9 +54,44 @@ beforeEach(async () => {
 });
 after(async () => { if (env) await env.cleanup(); });
 
-test('GIS publik dapat membaca dan query semua pohon', async () => {
-  await assertSucceeds(getDoc(ref(null, 'trees/own')));
-  await assertSucceeds(getDocs(collection(db(null), 'trees')));
+const projection = (d) => {
+  const { surveyorId, surveyorName, revision, rejectionReason, reviewedAt, reviewReadAt, ...publicFields } = d;
+  return { ...publicFields, ranahKewenangan: d.ranahKewenangan ?? '' };
+};
+async function decide(uid, id, status, revision = 1, reason = '') {
+  const database = db(uid);
+  const old = (await getDoc(doc(database, 'trees', id))).data();
+  const batch = writeBatch(database);
+  batch.update(doc(database, 'trees', id), {
+    status, revision, rejectionReason: reason, reviewedAt: serverTimestamp(), reviewReadAt: null,
+  });
+  if (status === 'verified') batch.set(doc(database, 'public_trees', id), projection({...old, status}));
+  else batch.delete(doc(database, 'public_trees', id));
+  return batch.commit();
+}
+async function removeTree(uid, id) {
+  const database = db(uid), batch = writeBatch(database);
+  batch.delete(doc(database, 'trees', id));
+  batch.delete(doc(database, 'public_trees', id));
+  return batch.commit();
+}
+test('Publik hanya membaca proyeksi, privat ditolak termasuk get langsung', async () => {
+  await assertFails(getDoc(ref(null, 'trees/own')));
+  await assertFails(getDocs(collection(db(null), 'trees')));
+  await assertSucceeds(getDocs(collection(db(null), 'public_trees')));
+  await decide('admin', 'own', 'verified');
+  const publicRow = (await assertSucceeds(getDoc(ref(null, 'public_trees/own')))).data();
+  for (const key of ['surveyorId', 'surveyorName', 'rejectionReason', 'reviewedAt', 'reviewReadAt', 'revision']) {
+    assert.equal(key in publicRow, false);
+  }
+});
+test('Surveyor hanya query milik sendiri dan admin dapat query semua', async () => {
+  await assertSucceeds(getDoc(ref('a', 'trees/own')));
+  await assertFails(getDoc(ref('a', 'trees/other')));
+  await assertFails(getDocs(collection(db('a'), 'trees')));
+  await assertSucceeds(getDocs(query(collection(db('a'), 'trees'), where('surveyorId', '==', 'a'))));
+  await assertSucceeds(getDocs(collection(db('admin'), 'trees')));
+  await assertFails(getDocs(collection(db('off'), 'trees')));
 });
 test('Surveyor membuat pending milik sendiri', () => assertSucceeds(setDoc(ref('a', 'trees/new'), tree())));
 for (const [label, uid, extra] of [
@@ -65,7 +101,7 @@ for (const [label, uid, extra] of [
   ['field tambahan', 'a', { role: 'admin' }], ['koordinat invalid', 'a', { latitude: 100 }],
   ['foto berlebihan', 'a', { photoBase64: 'x'.repeat(700001) }],
 ]) test(`Tolak create pohon: ${label}`, () => assertFails(setDoc(ref(uid, 'trees/new'), tree(extra))));
-test('Surveyor update payload toMap lengkap', () => assertSucceeds(updateDoc(ref('a', 'trees/own'), tree({ species: 'Jambu' }))));
+test('Surveyor update payload toMap lengkap', () => assertSucceeds(updateDoc(ref('a', 'trees/own'), tree({ species: 'Jambu', revision: 1 }))));
 for (const [label, path, extra] of [
   ['pemilik lain', 'trees/other', { species: 'Jambu' }],
   ['mengambil kepemilikan', 'trees/other', { surveyorId: 'a' }],
@@ -83,15 +119,83 @@ test('Akun nonaktif tidak menulis; admin nonaktif juga ditolak', async () => {
   await assertFails(updateDoc(ref('off', 'trees/own'), { species: 'Jambu' }));
   await assertFails(deleteDoc(ref('adminOff', 'trees/own')));
 });
-test('Admin membuat verified tanpa foto dan mengelola pohon', async () => {
-  await assertSucceeds(setDoc(ref('admin', 'trees/new'), tree({ surveyorId: 'admin', surveyorName: 'Admin: admin', status: 'verified', photoBase64: '' })));
-  await assertSucceeds(updateDoc(ref('admin', 'trees/own'), { status: 'verified' }));
-  await assertSucceeds(updateDoc(ref('admin', 'trees/other'), tree({ surveyorId: 'b', surveyorName: 'b', species: 'Jambu' })));
-  await assertSucceeds(deleteDoc(ref('admin', 'trees/own')));
+test('Admin create verified wajib proyeksi atomik', async () => {
+  const database = db('admin');
+  const value = tree({ surveyorId: 'admin', surveyorName: 'Admin', status: 'verified', photoBase64: '' });
+  await assertFails(setDoc(doc(database, 'trees/new'), value));
+  const batch = writeBatch(database);
+  batch.set(doc(database, 'trees/new'), value);
+  batch.set(doc(database, 'public_trees/new'), projection(value));
+  await assertSucceeds(batch.commit());
+  await assertSucceeds(decide('admin', 'own', 'verified'));
+  await assertFails(deleteDoc(ref('admin', 'trees/own')));
+  await assertSucceeds(removeTree('admin', 'own'));
 });
-test('Edit surveyor mempertahankan verified dari admin', async () => {
-  await assertSucceeds(updateDoc(ref('admin', 'trees/own'), { status: 'verified' }));
-  await assertSucceeds(updateDoc(ref('a', 'trees/own'), tree({ status: 'verified', species: 'Jambu' })));
+test('Edit surveyor verified kembali pending dan hapus proyeksi atomik', async () => {
+  await decide('admin', 'own', 'verified');
+  const database = db('a');
+  await assertFails(updateDoc(doc(database, 'trees/own'), { species: 'Jambu', revision: 2 }));
+  await assertFails(updateDoc(doc(database, 'trees/own'), { status: 'pending', species: 'Jambu', revision: 2 }));
+  const batch = writeBatch(database);
+  batch.update(doc(database, 'trees/own'), { status: 'pending', species: 'Jambu', revision: 2 });
+  batch.delete(doc(database, 'public_trees/own'));
+  await assertSucceeds(batch.commit());
+  assert.equal((await getDoc(ref(null, 'public_trees/own'))).exists(), false);
+});
+test('Tolak tanpa alasan atau dengan timestamp klien ditolak', async () => {
+  await assertFails(decide('admin', 'own', 'rejected'));
+  await assertFails(decide('admin', 'own', 'rejected', 1, '   '));
+  await assertFails(updateDoc(ref('admin', 'trees/own'), {
+    status: 'rejected', revision: 1, rejectionReason: 'Foto buram', reviewedAt: stamp, reviewReadAt: null,
+  }));
+  await assertSucceeds(decide('admin', 'own', 'rejected', 1, 'Foto buram. Mohon foto ulang.'));
+});
+test('Pemilik dapat baca pesan dan tandai dibaca; pihak lain tidak', async () => {
+  await decide('admin', 'own', 'rejected', 1, 'Perbaiki lokasi');
+  await assertFails(updateDoc(ref('b', 'trees/own'), { reviewReadAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref('a', 'trees/own'), { rejectionReason: 'Diubah', revision: 2, status: 'pending' }));
+  await assertFails(updateDoc(ref('a', 'trees/own'), { reviewReadAt: stamp }));
+  await assertSucceeds(updateDoc(ref('a', 'trees/own'), { reviewReadAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref('a', 'trees/own'), { status: 'pending', species: 'Jambu', revision: 2 }));
+  assert.equal((await getDoc(ref('a', 'trees/own'))).data().rejectionReason, 'Perbaiki lokasi');
+  await assertFails(updateDoc(ref('a', 'trees/own'), { status: 'verified', revision: 3 }));
+  await assertSucceeds(decide('admin', 'own', 'verified', 3));
+});
+test('Surveyor tidak bisa membuat keputusan admin atau reset pesan', async () => {
+  await assertFails(decide('a', 'own', 'rejected', 1, 'Palsu'));
+  await decide('admin', 'own', 'rejected', 1, 'Foto ulang');
+  await assertFails(updateDoc(ref('a', 'trees/own'), { status: 'pending', revision: 2, reviewedAt: null }));
+  await assertFails(updateDoc(ref('a', 'trees/own'), { status: 'pending', revision: 2, rejectionReason: '' }));
+});
+test('Proyeksi wajib cocok, tanpa identitas, tanpa pohon pending atau yatim', async () => {
+  await assertFails(setDoc(ref('admin', 'public_trees/own'), projection(tree())));
+  await decide('admin', 'own', 'verified');
+  const value = (await getDoc(ref('admin', 'trees/own'))).data();
+  await assertFails(setDoc(ref('admin', 'public_trees/own'), {...projection(value), surveyorName: 'Bocor'}));
+  await assertFails(setDoc(ref('admin', 'public_trees/own'), {...projection(value), species: 'Palsu'}));
+  await assertFails(setDoc(ref('admin', 'public_trees/orphan'), projection(value)));
+  await assertFails(deleteDoc(ref('a', 'public_trees/own')));
+  await assertFails(setDoc(ref('a', 'public_trees/own'), projection(value)));
+});
+test('Revisi usang tidak menimpa keputusan baru', async () => {
+  await decide('admin', 'own', 'rejected', 1, 'Periksa ulang');
+  await assertFails(decide('admin', 'own', 'verified', 1));
+  await assertFails(updateDoc(ref('a', 'trees/own'), { status: 'pending', revision: 1 }));
+});
+test('Migrasi verified lama tanpa field baru, idempoten dan tidak membuka data privat', async () => {
+  const old = tree({status: 'verified'});
+  for (const key of ['revision', 'reviewedAt', 'reviewReadAt', 'rejectionReason']) delete old[key];
+  await env.withSecurityRulesDisabled(async c => setDoc(doc(c.firestore(), 'trees/legacy'), old));
+  await assertSucceeds(setDoc(ref('admin', 'public_trees/legacy'), projection(old)));
+  await assertSucceeds(setDoc(ref('admin', 'public_trees/legacy'), projection(old)));
+  await assertFails(getDoc(ref(null, 'trees/legacy')));
+  await assertSucceeds(decide('admin', 'legacy', 'rejected', 1, 'Perbarui foto'));
+});
+test('Create pending dan delete proyeksi kosong dalam satu transaksi', async () => {
+  const database = db('a'), batch = writeBatch(database);
+  batch.set(doc(database, 'trees/new'), tree());
+  batch.delete(doc(database, 'public_trees/new'));
+  await assertSucceeds(batch.commit());
 });
 test('Profil sendiri terbaca termasuk nonaktif; daftar hanya admin', async () => {
   await assertSucceeds(getDoc(ref('a', 'users/a')));
@@ -191,10 +295,34 @@ for (const value of [null, 42, {}, 'x'.repeat(121)]) {
     assertFails(setDoc(ref('a', 'trees/authority'), tree({ ranahKewenangan: value }))));
 }
 test('Kewenangan dapat diisi dan dikosongkan pemilik; bukan akses admin', async () => {
-  await assertSucceeds(updateDoc(ref('a', 'trees/own'), { ranahKewenangan: 'Pusat' }));
-  await assertSucceeds(updateDoc(ref('a', 'trees/own'), { ranahKewenangan: '' }));
+  await assertSucceeds(updateDoc(ref('a', 'trees/own'), { ranahKewenangan: 'Pusat', revision: 1 }));
+  await assertSucceeds(updateDoc(ref('a', 'trees/own'), { ranahKewenangan: '', revision: 2 }));
   await assertFails(updateDoc(ref('a', 'trees/other'), { ranahKewenangan: 'Pusat' }));
   await assertFails(updateDoc(ref(null, 'trees/own'), { ranahKewenangan: 'Pusat' }));
   await assertFails(updateDoc(ref('off', 'trees/own'), { ranahKewenangan: 'Pusat' }));
   await assertFails(updateDoc(ref('a', 'trees/own'), { ranahKewenangan: 'Pusat', status: 'verified' }));
+});
+
+test('ID demo lama memuat UID: tidak boleh diterbitkan, proyeksi lama dapat dibersihkan', async () => {
+  const id = 'dummy_tree_v1_YWRtaW4_00';
+  const value = tree({surveyorId: 'admin', status: 'verified'});
+  await env.withSecurityRulesDisabled(async c => {
+    await setDoc(doc(c.firestore(), 'trees', id), value);
+    await setDoc(doc(c.firestore(), 'public_trees', id), projection(value));
+  });
+  await assertFails(setDoc(ref('admin', `public_trees/${id}`), projection(value)));
+  await assertSucceeds(deleteDoc(ref('admin', `public_trees/${id}`)));
+  await assertSucceeds(getDoc(ref('admin', `trees/${id}`)));
+});
+
+test('Penghapusan milik sendiri membersihkan public; milik orang lain tetap ditolak', async () => {
+  await decide('admin', 'own', 'verified');
+  await assertFails(removeTree('b', 'own'));
+  await assertSucceeds(removeTree('a', 'own'));
+  assert.equal((await getDoc(ref(null, 'public_trees/own'))).exists(), false);
+});
+
+test('Alasan mendukung beberapa baris tetapi bukan whitespace saja', async () => {
+  await assertFails(decide('admin', 'own', 'rejected', 1, ' \n\t '));
+  await assertSucceeds(decide('admin', 'own', 'rejected', 1, 'Foto buram.\nMohon ambil dari depan.'));
 });

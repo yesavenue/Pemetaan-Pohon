@@ -489,9 +489,11 @@ Widget adminTreeReview(TreeData tree) => Column(
     adminDetail('Surveyor', tree.surveyorName),
     adminDetail('Tanggal', tree.timestamp.toLocal().toString()),
     adminDetail('Koordinat', '${tree.latitude}, ${tree.longitude}'),
+    if (tree.rejectionReason.isNotEmpty)
+      adminDetail('Pesan perbaikan', tree.rejectionReason),
     adminDetail(
       'Status saat ini',
-      tree.status == TreeStatus.verified ? 'Terverifikasi' : 'Menunggu',
+      (tree.status == TreeStatus.pending ? 'Menunggu' : tree.status.label),
     ),
   ],
 );
@@ -527,9 +529,9 @@ void showAdminTreeDetail(BuildContext context, TreeData tree) =>
               adminDetail('Koordinat', '${tree.latitude}, ${tree.longitude}'),
               adminDetail(
                 'Status',
-                tree.status == TreeStatus.verified
-                    ? 'Terverifikasi'
-                    : 'Menunggu',
+                (tree.status == TreeStatus.pending
+                    ? 'Menunggu'
+                    : tree.status.label),
               ),
             ],
           ),

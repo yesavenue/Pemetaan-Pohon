@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:image/image.dart' as img;
+import 'package:pemetaan_pohon/utils/pruning_photo_compressor.dart';
 import 'public_test_actions.dart';
 
 import 'package:flutter/material.dart';
@@ -10,9 +13,7 @@ import 'package:pemetaan_pohon/models/tree_pruning_request.dart';
 import 'package:pemetaan_pohon/screens/public_pruning_request_screen.dart';
 
 const _homeKey = ValueKey('test-public-home');
-final _photo = base64Decode(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
-);
+final _photo = img.encodePng(img.Image(width: 8, height: 8));
 
 Future<void> _tap(
   WidgetTester tester,
@@ -102,8 +103,10 @@ Widget _screen(
   Future<Position> Function()? locate,
   Future<void> Function(String)? copyNumber,
   Future<XFile?> Function(ImageSource)? pickImage,
+  Future<Uint8List> Function(Uint8List)? preparePhoto,
 }) => PublicPruningRequestScreen(
   createRequest: submit,
+  preparePhoto: preparePhoto ?? compressPruningPhoto,
   pickImage:
       pickImage ?? (_) async => XFile.fromData(_photo, mimeType: 'image/png'),
   locate: locate,
@@ -335,7 +338,7 @@ void main() {
   });
 
   testWidgets(
-    'Foto pengganti terlalu besar tidak menghapus foto/draft sebelumnya',
+    'Foto pengganti gagal dikompres tidak menghapus foto/draft sebelumnya',
     (tester) async {
       await _largeSurface(tester);
       var picks = 0;
@@ -362,10 +365,76 @@ void main() {
       await _tap(tester, find.text('Ganti Foto Pohon'), settleAfter: false);
       await _tap(tester, find.text('Pilih dari Galeri'), settleBefore: false);
       expect(
-        find.textContaining('Foto kosong atau terlalu besar'),
+        find.textContaining('Format foto tidak dapat diproses'),
         findsOneWidget,
       );
       await _tap(tester, find.text('Lanjut'));
+      await _tap(tester, find.text('KIRIM PERMOHONAN'));
+      expect(payload?.fotoPohonBase64, base64Encode(_photo));
+      expect(payload?.fotoKtpBase64, base64Encode(_photo));
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'Hapus foto pohon mempertahankan KTP dan meminta pemeriksaan ulang',
+    (tester) async {
+      await _largeSurface(tester);
+      var writes = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: _screen((_) async {
+            writes++;
+            return 'REQ-000130';
+          }),
+        ),
+      );
+      await _fill(tester);
+      await _tap(tester, find.text('Edit lokasi & foto'));
+      await _tap(tester, find.byKey(const ValueKey('remove-tree-photo')));
+      expect(find.text('Tambahkan Foto Pohon'), findsOneWidget);
+      expect(find.text('Ganti Foto KTP'), findsOneWidget);
+      expect(find.byKey(const ValueKey('remove-tree-photo')), findsNothing);
+      await _tap(tester, find.text('Lanjut'));
+      expect(find.text('Foto pohon wajib diisi.'), findsOneWidget);
+      expect(find.text('KIRIM PERMOHONAN'), findsNothing);
+      expect(writes, 0);
+      await _tap(tester, find.text('Tambahkan Foto Pohon'), settleAfter: false);
+      await _tap(tester, find.text('Pilih dari Galeri'), settleBefore: false);
+      await _tap(tester, find.text('Lanjut'));
+      expect(
+        tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+        isFalse,
+      );
+      expect(writes, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'Foto besar memakai hasil kompresi tanpa menampilkan batas ukuran',
+    (tester) async {
+      await _largeSurface(tester);
+      var compressions = 0;
+      TreePruningRequest? payload;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: _screen(
+            (request) async {
+              payload = request;
+              return 'REQ-000131';
+            },
+            pickImage: (_) async =>
+                XFile.fromData(Uint8List(300000), mimeType: 'image/png'),
+            preparePhoto: (bytes) async {
+              compressions++;
+              return _photo;
+            },
+          ),
+        ),
+      );
+      await _fill(tester);
+      expect(compressions, 2);
+      expect(find.textContaining('262,5'), findsNothing);
+      expect(find.textContaining('Batas foto'), findsNothing);
       await _tap(tester, find.text('KIRIM PERMOHONAN'));
       expect(payload?.fotoPohonBase64, base64Encode(_photo));
       expect(payload?.fotoKtpBase64, base64Encode(_photo));

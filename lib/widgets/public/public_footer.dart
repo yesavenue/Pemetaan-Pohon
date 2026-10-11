@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../utils/branding.dart';
 import '../public_navbar.dart';
 import 'public_ui.dart';
+import 'public_office_location.dart';
 
 class PublicFooter extends StatelessWidget {
   final PublicPage currentPage;
@@ -43,7 +44,8 @@ class PublicFooter extends StatelessWidget {
                   const SizedBox(height: 16),
                   const Text(appInstansiUnit),
                   const SizedBox(height: 8),
-                  const SelectableText(appContactEmail),
+                  if (appContactEmail.isNotEmpty)
+                    const SelectableText(appContactEmail),
                   if (appContactPhone.trim().isNotEmpty &&
                       appContactPhone != '(0231) 000000')
                     const SelectableText(appContactPhone),
@@ -51,6 +53,12 @@ class PublicFooter extends StatelessWidget {
                   const Text(
                     appContactAddress,
                     style: TextStyle(color: PublicUi.muted, fontSize: 14),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => openOfficeMaps(context),
+                    icon: const Icon(Icons.location_on_outlined, size: 18),
+                    label: const Text('Lokasi kantor'),
                   ),
                 ],
               );

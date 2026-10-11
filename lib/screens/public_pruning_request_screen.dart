@@ -1,6 +1,8 @@
+import '../widgets/public/public_form_exit_guard.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../widgets/civic_design.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,6 +12,7 @@ import '../models/tree_pruning_request.dart';
 import '../services/pruning_request_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/cirebon_regions.dart';
+import '../utils/pruning_photo_compressor.dart';
 import 'public_home_screen.dart';
 import '../widgets/public_navbar.dart';
 import '../widgets/public/public_ui.dart';
@@ -33,6 +36,7 @@ class PublicPruningRequestScreen extends StatefulWidget {
   final WidgetBuilder? homeBuilder;
   final Future<Position> Function()? locate;
   final Future<void> Function(String)? copyNumber;
+  final Future<Uint8List> Function(Uint8List)? preparePhoto;
 
   const PublicPruningRequestScreen({
     super.key,
@@ -41,6 +45,7 @@ class PublicPruningRequestScreen extends StatefulWidget {
     this.homeBuilder,
     this.locate,
     this.copyNumber,
+    this.preparePhoto,
   });
 
   @override
@@ -89,6 +94,10 @@ class _PublicPruningRequestScreenState
   final _controlKeys = List.generate(5, (_) => GlobalKey());
   final _controlFocus = List.generate(5, (_) => FocusNode());
   bool _isPickingPhoto = false;
+  bool? _pickingKtp;
+  bool _isCompressingPhoto = false;
+  String? _pohonPhotoError;
+  String? _ktpPhotoError;
   bool _isCopyingNumber = false;
   String? _copyNotice;
   String? _submitError;
@@ -252,7 +261,15 @@ class _PublicPruningRequestScreenState
 
   Future<void> _pickPhoto({required bool isKtp}) async {
     if (_busy) return;
-    setState(() => _isPickingPhoto = true);
+    setState(() {
+      _isPickingPhoto = true;
+      _pickingKtp = isKtp;
+      if (isKtp) {
+        _ktpPhotoError = null;
+      } else {
+        _pohonPhotoError = null;
+      }
+    });
     try {
       final source = await showModalBottomSheet<ImageSource>(
         context: context,
@@ -279,19 +296,36 @@ class _PublicPruningRequestScreenState
       if (!mounted || source == null) return;
       final photo =
           await (widget.pickImage?.call(source) ??
-              _picker.pickImage(
-                source: source,
-                imageQuality: 40,
-                maxWidth: 900,
-              ));
+              _picker.pickImage(source: source));
       if (!mounted || photo == null) return;
-      final bytes = await photo.readAsBytes();
+      // Check the file length before allocating bytes for a huge input.
+      if (await photo.length() > pruningPhotoMaxInputBytes) {
+        throw const FormatException(
+          'Foto terlalu besar untuk diproses. Pilih versi dengan resolusi lebih rendah.',
+        );
+      }
+      if (!mounted) return;
+      final original = await photo.readAsBytes();
+      if (!mounted) return;
+      final Uint8List bytes;
+      if (original.length > pruningPhotoMaxBytes) {
+        setState(() => _isCompressingPhoto = true);
+        // Paint the status before CPU work starts on the web.
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        if (!mounted) return;
+        bytes =
+            await (widget.preparePhoto?.call(original) ??
+                compute(compressPruningPhoto, original));
+      } else {
+        bytes = await compressPruningPhoto(original);
+      }
+      if (bytes.isEmpty || bytes.length > pruningPhotoMaxBytes) {
+        throw const FormatException(
+          'Foto belum berhasil disiapkan. Pilih foto lain.',
+        );
+      }
       if (!mounted) return;
       final value = base64Encode(bytes);
-      if (value.isEmpty || value.length > 350000) {
-        _notice('Foto kosong atau terlalu besar. Coba pilih/ambil ulang.');
-        return;
-      }
       setState(() {
         _pernyataanBenar = false;
         if (isKtp) {
@@ -302,15 +336,55 @@ class _PublicPruningRequestScreenState
           _fotoPohonBase64 = value;
         }
       });
+    } on FormatException catch (error) {
+      if (mounted) {
+        _setPhotoError(isKtp, error.message);
+      }
     } catch (_) {
       if (mounted) {
+        _setPhotoError(
+          isKtp,
+          'Foto belum berhasil dipilih. Coba lagi; foto sebelumnya tetap tersedia jika ada.',
+        );
         _notice(
           'Foto belum berhasil dipilih. Foto sebelumnya tetap tersedia; coba lagi.',
         );
       }
     } finally {
-      if (mounted) setState(() => _isPickingPhoto = false);
+      if (mounted) {
+        setState(() {
+          _isPickingPhoto = false;
+          _pickingKtp = null;
+          _isCompressingPhoto = false;
+        });
+      }
     }
+  }
+
+  void _setPhotoError(bool isKtp, String message) {
+    setState(() {
+      if (isKtp) {
+        _ktpPhotoError = message;
+      } else {
+        _pohonPhotoError = message;
+      }
+    });
+  }
+
+  void _removePhoto({required bool isKtp}) {
+    if (_busy) return;
+    setState(() {
+      _pernyataanBenar = false;
+      if (isKtp) {
+        _fotoKtpBytes = null;
+        _fotoKtpBase64 = null;
+        _ktpPhotoError = null;
+      } else {
+        _fotoPohonBytes = null;
+        _fotoPohonBase64 = null;
+        _pohonPhotoError = null;
+      }
+    });
   }
 
   Future<void> _fetchLocation() async {
@@ -464,6 +538,8 @@ class _PublicPruningRequestScreenState
       _fotoPohonBase64 = null;
       _fotoKtpBytes = null;
       _fotoKtpBase64 = null;
+      _pohonPhotoError = null;
+      _ktpPhotoError = null;
       _pernyataanBenar = false;
       for (var i = 0; i < _attempted.length; i++) {
         _attempted[i] = false;
@@ -572,8 +648,23 @@ class _PublicPruningRequestScreenState
     ],
   );
   @override
-  Widget build(BuildContext context) => PopScope<Object?>(
-    canPop: !_busy,
+  Widget build(BuildContext context) => PublicFormExitGuard(
+    hasChanges:
+        _submittedNumber == null &&
+        (_controllers.any((c) => c.text.isNotEmpty) ||
+            _selectedKecamatan != null ||
+            _selectedKelurahan != null ||
+            _selectedAlasan != null ||
+            _position != null ||
+            _fotoPohonBytes != null ||
+            _fotoKtpBytes != null ||
+            _pernyataanBenar),
+    busy: _busy,
+    onRootExit: () => navigateToPublicPage(
+      context,
+      PublicPage.beranda,
+      PublicPage.permohonan,
+    ),
     child: PublicScaffold(
       currentPage: PublicPage.permohonan,
       navigationEnabled: !_busy,
@@ -834,6 +925,29 @@ class _PublicPruningRequestScreenState
   Widget _applicant() => _SectionCard(
     title: 'Data Pemohon',
     children: [
+      Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: PublicUi.mint,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Penggunaan data identitas',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'NIK dan foto KTP disertakan dalam permohonan untuk pemeriksaan identitas pemohon oleh admin. '
+              'Data permohonan disimpan di sistem dan tidak ditampilkan pada peta publik. '
+              'Akses melalui aplikasi dibatasi untuk admin; akun surveyor tidak mendapat akses ke data permohonan.',
+            ),
+          ],
+        ),
+      ),
       _field(
         _namaController,
         'Nama Lengkap *',
@@ -1027,7 +1141,7 @@ class _PublicPruningRequestScreenState
           title: 'Foto Pohon *',
           children: [
             const Text(
-              'Pastikan kondisi pohon terlihat jelas. Foto diperkecil saat dipilih oleh aplikasi.',
+              'Pastikan kondisi pohon terlihat jelas. Foto besar akan dikompres otomatis.',
             ),
             _photo(_fotoPohonBytes),
             OutlinedButton.icon(
@@ -1041,6 +1155,7 @@ class _PublicPruningRequestScreenState
                     : 'Ganti Foto Pohon',
               ),
             ),
+            _photoFeedback(isKtp: false),
             if (_attempted[1] && _fotoPohonBase64 == null)
               const Text('Foto pohon wajib diisi.'),
           ],
@@ -1049,7 +1164,7 @@ class _PublicPruningRequestScreenState
           title: 'Foto KTP *',
           children: [
             const Text(
-              'Untuk verifikasi pemohon oleh admin berwenang; tidak ditampilkan dalam daftar publik.',
+              'Untuk verifikasi pemohon oleh admin berwenang; tidak ditampilkan dalam daftar publik. Foto besar dikompres otomatis. Pastikan tulisan tetap terbaca pada preview.',
             ),
             _photo(_fotoKtpBytes),
             OutlinedButton.icon(
@@ -1061,6 +1176,7 @@ class _PublicPruningRequestScreenState
                 _fotoKtpBytes == null ? 'Tambahkan Foto KTP' : 'Ganti Foto KTP',
               ),
             ),
+            _photoFeedback(isKtp: true),
             if (_attempted[1] && _fotoKtpBase64 == null)
               const Text('Foto KTP wajib diisi.'),
           ],
@@ -1068,6 +1184,55 @@ class _PublicPruningRequestScreenState
       ),
     ],
   );
+  Widget _photoFeedback({required bool isKtp}) {
+    final bytes = isKtp ? _fotoKtpBytes : _fotoPohonBytes;
+    final error = isKtp ? _ktpPhotoError : _pohonPhotoError;
+    final picking = _isPickingPhoto && _pickingKtp == isKtp;
+    final label = isKtp ? 'KTP' : 'pohon';
+    return AnimatedSize(
+      duration: PublicUi.duration(context, 180),
+      alignment: Alignment.topLeft,
+      curve: Curves.easeOutCubic,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (picking)
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  _isCompressingPhoto
+                      ? 'Menyiapkan foto $label…'
+                      : 'Menunggu pemilihan foto $label…',
+                ),
+              ),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    error,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              ),
+            if (bytes != null)
+              TextButton.icon(
+                key: ValueKey(isKtp ? 'remove-ktp-photo' : 'remove-tree-photo'),
+                onPressed: _busy ? null : () => _removePhoto(isKtp: isKtp),
+                icon: const Icon(Icons.delete_outline),
+                label: Text(isKtp ? 'Hapus Foto KTP' : 'Hapus Foto Pohon'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _pair(Widget first, Widget second) => LayoutBuilder(
     builder: (context, box) {
       return box.maxWidth >= 680 &&

@@ -87,6 +87,38 @@ class _AdminDashboardState extends State<AdminDashboard> {
     }
   }
 
+  Future<void> _rebuildPublicTrees() async {
+    if (_locked) {
+      return;
+    }
+    final result = await openAdminAction(
+      context,
+      AdminActionDialog(
+        title: 'Sinkronkan data peta publik',
+        submitLabel: 'Mulai sinkronisasi',
+        onBusy: _setBusy,
+        content: (_, __) => const Text(
+          'Menyalin data pohon terverifikasi tanpa identitas surveyor atau pesan admin. '
+          'Jalankan setelah memasang rules baru untuk mengisi data lama. '
+          'Proses dapat diulang jika koneksi terputus.',
+        ),
+        operation: () async {
+          try {
+            await _treeService.rebuildPublicTrees();
+            return null;
+          } catch (_) {
+            return 'Sinkronisasi belum selesai. Periksa koneksi dan coba lagi.';
+          }
+        },
+      ),
+    );
+    if (mounted && result == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Data peta publik selesai disinkronkan.')),
+      );
+    }
+  }
+
   Future<void> _manageDemoTrees({required bool remove}) async {
     if (!kDebugMode || _locked) return;
     var changed = 0;
@@ -281,6 +313,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       icon: const Icon(Icons.auto_awesome_outlined),
                       label: const Text('Isi 30 data contoh'),
                     ),
+                    OutlinedButton.icon(
+                      onPressed: _locked ? null : _rebuildPublicTrees,
+                      icon: const Icon(Icons.sync),
+                      label: const Text('Sinkronkan peta publik'),
+                    ),
                     TextButton.icon(
                       onPressed: _locked
                           ? null
@@ -356,6 +393,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 create: _treeService.createTree,
                 update: _treeService.updateTree,
                 setStatus: _treeService.setTreeStatus,
+                review: _treeService.reviewTree,
                 delete: _treeService.deleteTree,
                 export: _exportTrees,
                 exportReport: (rows, scope) => _exportTrees(rows, scope: scope),

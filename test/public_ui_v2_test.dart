@@ -76,7 +76,7 @@ void main() {
     },
   );
   testWidgets(
-    'Navbar solid → glass → solid; scroll nested dan peta dikecualikan',
+    'Navbar transparan → solid → transparan; scroll nested dan peta dikecualikan',
     (tester) async {
       final main = ScrollController();
       final nested = ScrollController();
@@ -103,19 +103,28 @@ void main() {
       );
       await tester.pumpWidget(page(PublicPage.beranda));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('public-header-solid')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('public-header-transparent')),
+        findsOneWidget,
+      );
       nested.jumpTo(120);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('public-header-solid')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('public-header-transparent')),
+        findsOneWidget,
+      );
       main.jumpTo(120);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('public-header-glass')), findsOneWidget);
+      expect(find.byKey(const ValueKey('public-header-solid')), findsOneWidget);
       main.jumpTo(16);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('public-header-glass')), findsOneWidget);
+      expect(find.byKey(const ValueKey('public-header-solid')), findsOneWidget);
       main.jumpTo(0);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('public-header-solid')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('public-header-transparent')),
+        findsOneWidget,
+      );
       await tester.pumpWidget(page(PublicPage.peta));
       await tester.pumpAndSettle();
       main.jumpTo(120);
@@ -154,7 +163,7 @@ void main() {
       scroll.jumpTo(120);
       await tester.pump();
       await tester.pump();
-      expect(find.byKey(const ValueKey('public-header-glass')), findsOneWidget);
+      expect(find.byKey(const ValueKey('public-header-solid')), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },

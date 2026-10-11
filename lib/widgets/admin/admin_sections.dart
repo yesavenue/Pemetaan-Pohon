@@ -487,6 +487,7 @@ class AdminTreesPane extends StatefulWidget {
   final Stream<List<TreeData>> Function() load;
   final Future<String?> Function(TreeData) create, update;
   final Future<String?> Function(String, TreeStatus) setStatus;
+  final Future<String?> Function(TreeData, TreeStatus, String)? review;
   final Future<String?> Function(String) delete;
   final Future<void> Function(List<TreeData>) export;
   final Future<void> Function(List<TreeData>, String)? exportReport;
@@ -498,6 +499,7 @@ class AdminTreesPane extends StatefulWidget {
     required this.create,
     required this.update,
     required this.setStatus,
+    this.review,
     required this.delete,
     required this.export,
     this.exportReport,
@@ -562,77 +564,116 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
       return;
     }
     final updates = _feed.watch();
+    final reason = TextEditingController();
+    var reject = false;
     final ok = await showOwnedAdminDialog<bool>(
       context,
       dismissible: false,
-      builder: (_) => StreamBuilder<List<TreeData>>(
-        stream: updates,
-        initialData: _feed.latest,
-        builder: (context, snapshot) {
-          TreeData? current;
-          for (final row in snapshot.data ?? <TreeData>[]) {
-            if (row.id == tree.id) {
-              current = row;
-              break;
+      builder: (_) => StatefulBuilder(
+        builder: (context, refresh) => StreamBuilder<List<TreeData>>(
+          stream: updates,
+          initialData: _feed.latest,
+          builder: (context, snapshot) {
+            TreeData? current;
+            for (final row in snapshot.data ?? <TreeData>[]) {
+              if (row.id == tree.id) {
+                current = row;
+                break;
+              }
             }
-          }
-          final row = current;
-          final ready = !snapshot.hasError && snapshot.hasData;
-          return AdminActionDialog(
-            title: row == null ? 'Tinjau pohon' : 'Tinjau ${row.species}',
-            submitLabel: row?.status == TreeStatus.verified
-                ? 'Batalkan verifikasi'
-                : 'Verifikasi',
-            canSubmit: ready && row != null,
-            onBusy: widget.onBusy,
-            content: (_, __) => row == null || !ready
-                ? Text(
-                    snapshot.hasError
-                        ? 'Data terbaru gagal dimuat. Tutup dialog dan coba muat ulang daftar.'
-                        : ready
-                        ? 'Pohon ini sudah dihapus atau tidak lagi tersedia.'
-                        : 'Memuat data terbaru…',
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      adminTreeReview(row),
-                      const SizedBox(height: 12),
-                      Text(
-                        row.status == TreeStatus.pending
-                            ? 'Verifikasi akan menampilkan pohon ini pada peta publik.'
-                            : 'Pembatalan verifikasi akan menyembunyikan pohon ini dari peta publik.',
-                      ),
-                    ],
-                  ),
-            validate: () {
-              final latest = _feed.latest;
-              if (latest == null) {
-                return 'Data terbaru belum tersedia.';
-              }
-              TreeData? found;
-              for (final item in latest) {
-                if (item.id == tree.id) {
-                  found = item;
-                  break;
+            final row = current;
+            final ready = !snapshot.hasError && snapshot.hasData;
+            return AdminActionDialog(
+              title: row == null ? 'Tinjau pohon' : 'Tinjau ${row.species}',
+              submitLabel: reject
+                  ? 'Kirim alasan perbaikan'
+                  : row?.status == TreeStatus.verified
+                  ? 'Batalkan verifikasi'
+                  : 'Verifikasi',
+              canSubmit: ready && row != null,
+              onBusy: widget.onBusy,
+              onDispose: reason.dispose,
+              content: (_, __) => row == null || !ready
+                  ? Text(
+                      snapshot.hasError
+                          ? 'Data terbaru gagal dimuat. Tutup dialog dan coba muat ulang daftar.'
+                          : ready
+                          ? 'Pohon ini sudah dihapus atau tidak lagi tersedia.'
+                          : 'Memuat data terbaru…',
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        adminTreeReview(row),
+                        if (widget.review != null) ...[
+                          const SizedBox(height: 12),
+                          SwitchListTile.adaptive(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Minta perbaikan'),
+                            subtitle: const Text(
+                              'Pohon tidak tampil di publik sampai disetujui kembali.',
+                            ),
+                            value: reject,
+                            onChanged: (value) => refresh(() => reject = value),
+                          ),
+                          if (reject)
+                            TextField(
+                              key: const ValueKey('tree-rejection-reason'),
+                              controller: reason,
+                              minLines: 2,
+                              maxLines: 5,
+                              maxLength: 2000,
+                              decoration: const InputDecoration(
+                                labelText: 'Alasan untuk surveyor',
+                                hintText:
+                                    'Jelaskan bagian yang perlu diperbaiki.',
+                              ),
+                            ),
+                        ],
+                        const SizedBox(height: 12),
+                        Text(
+                          row.status != TreeStatus.verified
+                              ? 'Verifikasi akan menampilkan pohon ini pada peta publik.'
+                              : 'Pembatalan verifikasi akan menyembunyikan pohon ini dari peta publik.',
+                        ),
+                      ],
+                    ),
+              validate: () {
+                if (reject && reason.text.trim().isEmpty) {
+                  return 'Tuliskan alasan perbaikan.';
                 }
-              }
-              if (found == null) {
-                return 'Pohon sudah tidak tersedia.';
-              }
-              if (!identical(found, row)) {
-                return 'Data berubah. Tinjau informasi terbaru sebelum melanjutkan.';
-              }
-              return null;
-            },
-            operation: () => widget.setStatus(
-              tree.id,
-              row!.status == TreeStatus.pending
-                  ? TreeStatus.verified
-                  : TreeStatus.pending,
-            ),
-          );
-        },
+                final latest = _feed.latest;
+                if (latest == null) {
+                  return 'Data terbaru belum tersedia.';
+                }
+                TreeData? found;
+                for (final item in latest) {
+                  if (item.id == tree.id) {
+                    found = item;
+                    break;
+                  }
+                }
+                if (found == null) {
+                  return 'Pohon sudah tidak tersedia.';
+                }
+                if (!identical(found, row)) {
+                  return 'Data berubah. Tinjau informasi terbaru sebelum melanjutkan.';
+                }
+                return null;
+              },
+              operation: () {
+                final target = reject
+                    ? TreeStatus.rejected
+                    : row!.status == TreeStatus.verified
+                    ? TreeStatus.pending
+                    : TreeStatus.verified;
+                return widget.review != null
+                    ? widget.review!(row!, target, reason.text.trim())
+                    : widget.setStatus(tree.id, target);
+              },
+            );
+          },
+        ),
       ),
     );
     if (mounted && ok == true) {
@@ -748,8 +789,7 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
           final filters = [
             if (_search.text.trim().isNotEmpty)
               'Pencarian: ${_search.text.trim()}',
-            if (_status != null)
-              'Status: ${_status == TreeStatus.verified ? "Terverifikasi" : "Menunggu"}',
+            if (_status != null) 'Status: ${_status!.label}',
             if (_condition != null) 'Kondisi: ${_condition!.label}',
             if (_species != null) 'Jenis: $_species',
           ];
@@ -827,7 +867,7 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
                         ? 'Semua'
                         : status == TreeStatus.pending
                         ? 'Menunggu'
-                        : 'Terverifikasi',
+                        : status.label,
                   ),
                   selected: _status == status,
                   onSelected: (_) => setState(() => _status = status),
@@ -902,8 +942,9 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
             ],
           ),
         ],
-        retry: () {
-          _feed.reload();
+        retry: () async {
+          await _feed.reload();
+          if (!mounted) return;
           setState(() => _stream = _feed.watch());
         },
         empty: all.isEmpty
@@ -926,7 +967,7 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
             children: [
               _conditionBadge(t.condition),
               _badge(
-                t.status == TreeStatus.verified ? 'Terverifikasi' : 'Menunggu',
+                (t.status == TreeStatus.pending ? 'Menunggu' : t.status.label),
                 t.status == TreeStatus.verified
                     ? AppColors.leaf
                     : AppColors.navy,
@@ -979,9 +1020,9 @@ class AdminTreesPaneState extends State<AdminTreesPane> {
                   DataCell(Text(_date(t.timestamp))),
                   DataCell(
                     Text(
-                      t.status == TreeStatus.verified
-                          ? 'Terverifikasi'
-                          : 'Menunggu',
+                      (t.status == TreeStatus.pending
+                          ? 'Menunggu'
+                          : t.status.label),
                     ),
                   ),
                   DataCell(SizedBox(width: 190, child: _actions(t))),

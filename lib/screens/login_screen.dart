@@ -4,7 +4,8 @@ import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final bool standalone;
+  const LoginScreen({super.key, this.standalone = false});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -62,7 +63,9 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       // AuthWrapper existing menentukan role dan tujuan setelah login.
-      Navigator.pop(context);
+      if (!widget.standalone) {
+        Navigator.pop(context);
+      }
     } catch (_) {
       if (mounted) {
         setState(
@@ -127,84 +130,102 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final content = ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 440),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _hero(),
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    _forgotPassword ? 'Lupa Password' : 'Selamat Datang',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.navy,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _forgotPassword
+                        ? 'Masukkan email akun untuk meminta tautan reset password.'
+                        : widget.standalone
+                        ? 'Masuk dengan akun surveyor yang diberikan admin.'
+                        : 'Masuk dengan akun Surveyor atau Admin Anda.',
+                    style: const TextStyle(
+                      color: Colors.blueGrey,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  if (_notice != null) _feedback(_notice!, false),
+                  if (_error != null) _feedback(_error!, true),
+                  AbsorbPointer(
+                    absorbing: _busy,
+                    child: _forgotPassword ? _resetForm() : _loginForm(),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: _busy
+                        ? null
+                        : (_forgotPassword ? _resetPassword : _login),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                    child: _busy
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(_forgotPassword ? 'Kirim Link Reset' : 'Masuk'),
+                  ),
+                  TextButton(
+                    onPressed: _busy ? null : _switchForm,
+                    child: Text(
+                      _forgotPassword ? 'Kembali ke Login' : 'Lupa password?',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (widget.standalone) {
+      return PopScope<Object?>(
+        canPop: !_busy,
+        child: Scaffold(
+          backgroundColor: const Color(0xFFF1F6F3),
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  clipBehavior: Clip.antiAlias,
+                  child: content,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return PopScope<Object?>(
       canPop: !_busy,
       child: Dialog(
         insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _hero(),
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        _forgotPassword ? 'Lupa Password' : 'Selamat Datang',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.navy,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _forgotPassword
-                            ? 'Masukkan email akun untuk meminta tautan reset password.'
-                            : 'Masuk dengan akun Surveyor atau Admin Anda.',
-                        style: const TextStyle(
-                          color: Colors.blueGrey,
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      if (_notice != null) _feedback(_notice!, false),
-                      if (_error != null) _feedback(_error!, true),
-                      AbsorbPointer(
-                        absorbing: _busy,
-                        child: _forgotPassword ? _resetForm() : _loginForm(),
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: _busy
-                            ? null
-                            : (_forgotPassword ? _resetPassword : _login),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(48),
-                        ),
-                        child: _busy
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(
-                                _forgotPassword ? 'Kirim Link Reset' : 'Masuk',
-                              ),
-                      ),
-                      TextButton(
-                        onPressed: _busy ? null : _switchForm,
-                        child: Text(
-                          _forgotPassword
-                              ? 'Kembali ke Login'
-                              : 'Lupa password?',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        child: content,
       ),
     );
   }
@@ -262,15 +283,16 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
-        Positioned(
-          top: 6,
-          right: 6,
-          child: IconButton(
-            tooltip: 'Tutup Login',
-            onPressed: _busy ? null : () => Navigator.pop(context),
-            icon: const Icon(Icons.close, color: Colors.white),
+        if (!widget.standalone)
+          Positioned(
+            top: 6,
+            right: 6,
+            child: IconButton(
+              tooltip: 'Tutup Login',
+              onPressed: _busy ? null : () => Navigator.pop(context),
+              icon: const Icon(Icons.close, color: Colors.white),
+            ),
           ),
-        ),
       ],
     ),
   );

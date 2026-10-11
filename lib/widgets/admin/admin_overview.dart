@@ -520,6 +520,13 @@ class _AdminOverviewState extends State<AdminOverview> {
   String _date(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 
+  String _waitingAge(DateTime date) {
+    final duration = DateTime.now().difference(date);
+    if (duration.isNegative) return 'Periksa tanggal';
+    if (duration.inDays == 0) return 'Kurang dari 1 hari';
+    return '${duration.inDays} hari menunggu';
+  }
+
   Widget _treeQueue(List<TreeData> all) => LayoutBuilder(
     builder: (context, c) {
       final items = all.take(5).toList();
@@ -676,7 +683,11 @@ class _AdminOverviewState extends State<AdminOverview> {
                           ),
                         ),
                       ),
-                      DataCell(Text(_date(r.createdAt))),
+                      DataCell(
+                        Text(
+                          '${_date(r.createdAt)}\n${_waitingAge(r.createdAt)}',
+                        ),
+                      ),
                       const DataCell(Text('Menunggu')),
                       DataCell(
                         TextButton(
@@ -709,7 +720,7 @@ class _AdminOverviewState extends State<AdminOverview> {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   Text(_location(r.alamatPohon, r.kelurahan, r.kecamatan)),
-                  Text('Menunggu • ${_date(r.createdAt)}'),
+                  Text('${_waitingAge(r.createdAt)} • ${_date(r.createdAt)}'),
                   TextButton(
                     key: ValueKey('review-request-${r.id}'),
                     onPressed: () => widget.onReviewRequest(r),

@@ -35,6 +35,7 @@ class _TreeDetailScreenState extends State<TreeDetailScreen> {
   bool _loaded = false;
   bool _readError = false;
   bool _busy = false;
+  DateTime? _acknowledging;
 
   @override
   void initState() {
@@ -44,23 +45,41 @@ class _TreeDetailScreenState extends State<TreeDetailScreen> {
 
   void _watchTree() {
     _subscription?.cancel();
-    _subscription = _service.streamTrees().listen(
-      (trees) {
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _tree = trees.where((item) => item.id == widget.tree.id).firstOrNull;
-          _loaded = true;
-          _readError = false;
-        });
-      },
-      onError: (Object error) {
-        if (mounted) {
-          setState(() => _readError = true);
-        }
-      },
-    );
+    _subscription = _service
+        .streamTree(widget.tree.id)
+        .listen(
+          (trees) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _tree = trees
+                  .where((item) => item.id == widget.tree.id)
+                  .firstOrNull;
+              _loaded = true;
+              _readError = false;
+            });
+            final current = _tree;
+            if (current != null &&
+                ModalRoute.of(context)?.isCurrent == true &&
+                current.hasUnreadReview &&
+                _acknowledging != current.reviewedAt) {
+              _acknowledging = current.reviewedAt;
+              unawaited(
+                _service.markReviewRead(current).then((error) {
+                  if (error != null) {
+                    _message(error);
+                  }
+                }),
+              );
+            }
+          },
+          onError: (Object error) {
+            if (mounted) {
+              setState(() => _readError = true);
+            }
+          },
+        );
   }
 
   @override
@@ -287,10 +306,33 @@ class _TreeDetailScreenState extends State<TreeDetailScreen> {
               _field(
                 Icons.verified_outlined,
                 'Verifikasi Admin',
-                tree.status == TreeStatus.verified
-                    ? 'Terverifikasi'
-                    : 'Menunggu verifikasi',
+                tree.status.label,
               ),
+              if (tree.rejectionReason.isNotEmpty) ...[
+                _section(
+                  tree.status == TreeStatus.rejected
+                      ? 'Pesan admin • perlu perbaikan'
+                      : 'Pesan perbaikan sebelumnya',
+                ),
+                _field(Icons.feedback_outlined, 'Alasan', tree.rejectionReason),
+                if (tree.hasUnreadReview)
+                  TextButton.icon(
+                    icon: const Icon(Icons.mark_email_read_outlined),
+                    label: const Text('Tandai pesan dibaca'),
+                    onPressed: _busy
+                        ? null
+                        : () async {
+                            final error = await _service.markReviewRead(tree);
+                            if (error != null) {
+                              _message(error);
+                            }
+                          },
+                  ),
+                if (tree.status == TreeStatus.rejected)
+                  const Text(
+                    'Perbaiki data lalu kirim ulang. Pohon akan ditinjau kembali oleh admin.',
+                  ),
+              ],
               const SizedBox(height: 20),
               OutlinedButton.icon(
                 icon: const Icon(Icons.map_outlined),
@@ -317,7 +359,11 @@ class _TreeDetailScreenState extends State<TreeDetailScreen> {
                 FilledButton.icon(
                   onPressed: _busy ? null : () => _edit(tree),
                   icon: const Icon(Icons.edit_outlined),
-                  label: const Text('Edit data pohon'),
+                  label: Text(
+                    tree.status == TreeStatus.rejected
+                        ? 'Perbaiki & kirim ulang'
+                        : 'Edit & ajukan ulang',
+                  ),
                 ),
                 const SizedBox(height: 20),
                 const Divider(),

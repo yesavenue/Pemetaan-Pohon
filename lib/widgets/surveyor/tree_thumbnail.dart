@@ -77,4 +77,4 @@ class _TreeThumbnailState extends State<TreeThumbnail> {
       ),
     );
   }
-}
+} 

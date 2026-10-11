@@ -2,10 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum TreeStatus {
   pending,
-  verified;
+  verified,
+  rejected;
 
   static TreeStatus fromString(String value) {
     switch (value.toLowerCase()) {
+      case 'rejected':
+        return TreeStatus.rejected;
       case 'verified':
         return TreeStatus.verified;
       default:
@@ -13,7 +16,13 @@ enum TreeStatus {
     }
   }
 
-  String toMapString() => this == TreeStatus.verified ? 'verified' : 'pending';
+  String toMapString() => name;
+
+  String get label => switch (this) {
+    TreeStatus.pending => 'Menunggu verifikasi',
+    TreeStatus.verified => 'Terverifikasi',
+    TreeStatus.rejected => 'Perlu perbaikan',
+  };
 }
 
 enum TreeCondition {
@@ -65,6 +74,15 @@ class TreeData {
   final DateTime timestamp;
   final TreeStatus status;
   final bool qrGenerated;
+  final String rejectionReason;
+  final DateTime? reviewedAt;
+  final DateTime? reviewReadAt;
+  final int revision;
+
+  bool get hasUnreadReview =>
+      status == TreeStatus.rejected &&
+      reviewedAt != null &&
+      (reviewReadAt == null || reviewReadAt!.isBefore(reviewedAt!));
 
   TreeData({
     required this.id,
@@ -83,6 +101,10 @@ class TreeData {
     required this.timestamp,
     this.status = TreeStatus.pending,
     this.qrGenerated = false,
+    this.rejectionReason = '',
+    this.reviewedAt,
+    this.reviewReadAt,
+    this.revision = 0,
   });
 
   factory TreeData.fromMap(String id, Map<String, dynamic> data) {
@@ -105,6 +127,10 @@ class TreeData {
       timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
       status: TreeStatus.fromString(data['status'] ?? ''),
       qrGenerated: data['qrGenerated'] ?? false,
+      rejectionReason: data['rejectionReason'] ?? '',
+      reviewedAt: (data['reviewedAt'] as Timestamp?)?.toDate(),
+      reviewReadAt: (data['reviewReadAt'] as Timestamp?)?.toDate(),
+      revision: (data['revision'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -125,8 +151,31 @@ class TreeData {
       'timestamp': Timestamp.fromDate(timestamp),
       'status': status.toMapString(),
       'qrGenerated': qrGenerated,
+      'rejectionReason': rejectionReason,
+      'reviewedAt': reviewedAt == null ? null : Timestamp.fromDate(reviewedAt!),
+      'reviewReadAt': reviewReadAt == null
+          ? null
+          : Timestamp.fromDate(reviewReadAt!),
+      'revision': revision,
     };
   }
+
+  /// Explicit public allowlist: private fields must never be copied here.
+  Map<String, dynamic> toPublicMap() => {
+    'latitude': latitude,
+    'longitude': longitude,
+    'photoBase64': photoBase64,
+    'species': species,
+    'kecamatan': kecamatan,
+    'kelurahan': kelurahan,
+    'namaJalan': namaJalan,
+    'ranahKewenangan': ranahKewenangan,
+    'condition': condition.toMapString(),
+    'keteranganKondisi': keteranganKondisi,
+    'timestamp': Timestamp.fromDate(timestamp),
+    'status': status.toMapString(),
+    'qrGenerated': qrGenerated,
+  };
 
   TreeData copyWith({
     double? latitude,
@@ -158,6 +207,10 @@ class TreeData {
       timestamp: timestamp,
       status: status ?? this.status,
       qrGenerated: qrGenerated,
+      rejectionReason: rejectionReason,
+      reviewedAt: reviewedAt,
+      reviewReadAt: reviewReadAt,
+      revision: revision,
     );
   }
 }

@@ -6,6 +6,8 @@ import '../models/app_user.dart';
 import '../view_models/surveyor_dashboard_data.dart';
 import '../models/tree_data.dart';
 import '../services/tree_service.dart';
+import '../utils/session_feed.dart';
+import '../widgets/surveyor/review_inbox.dart';
 import 'surveyor/dashboard_home.dart';
 import 'surveyor/tree_browser.dart';
 import 'surveyor/tree_detail_screen.dart';
@@ -27,6 +29,7 @@ class SurveyorDashboard extends StatefulWidget {
 class _SurveyorDashboardState extends State<SurveyorDashboard> {
   final _authService = AuthService();
   late Stream<SurveyorDashboardData> _trees;
+  late SessionFeed<SurveyorDashboardData> _feed;
   late AppUser _surveyorUser;
   int _selectedTab = 0;
   bool _showList = false;
@@ -39,12 +42,14 @@ class _SurveyorDashboardState extends State<SurveyorDashboard> {
   void initState() {
     super.initState();
     _surveyorUser = widget.surveyorUser;
-    _trees = _createTreeStream();
+    _feed = SessionFeed(_createTreeStream);
+    _trees = _feed.watch();
     _registerSession();
   }
 
-  Stream<SurveyorDashboardData> _createTreeStream() =>
-      TreeService().streamTrees().map(
+  Stream<SurveyorDashboardData> _createTreeStream() => TreeService()
+      .streamOwnTrees(_surveyorUser.uid)
+      .map(
         (trees) => SurveyorDashboardData.fromTrees(trees, _surveyorUser.uid),
       );
 
@@ -123,6 +128,7 @@ class _SurveyorDashboardState extends State<SurveyorDashboard> {
   @override
   void dispose() {
     _sessionSub?.cancel();
+    _feed.dispose();
     super.dispose();
   }
 
@@ -197,6 +203,15 @@ class _SurveyorDashboardState extends State<SurveyorDashboard> {
                   icon: const Icon(Icons.arrow_back),
                 )
               : null,
+          actions: [
+            StreamBuilder<SurveyorDashboardData>(
+              stream: _trees,
+              builder: (context, snapshot) =>
+                  snapshot.hasError || !snapshot.hasData
+                  ? const SizedBox.shrink()
+                  : ReviewInbox(trees: snapshot.data!.trees, onOpen: _openTree),
+            ),
+          ],
           title: Text(
             _pageTitle,
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
@@ -224,9 +239,9 @@ class _SurveyorDashboardState extends State<SurveyorDashboard> {
                               ),
                               const SizedBox(height: 12),
                               OutlinedButton(
-                                onPressed: () => setState(
-                                  () => _trees = _createTreeStream(),
-                                ),
+                                onPressed: () => setState(() {
+                                  _trees = _feed.loadView();
+                                }),
                                 child: const Text('Coba Lagi'),
                               ),
                             ],

@@ -130,7 +130,7 @@ Uint8List buildTreeExcelBytes(
       DoubleCellValue(t.latitude),
       DoubleCellValue(t.longitude),
       TextCellValue(
-        t.status == TreeStatus.verified ? 'Terverifikasi' : 'Menunggu',
+        (t.status == TreeStatus.pending ? 'Menunggu' : t.status.label),
       ),
       TextCellValue(t.surveyorName),
       DateTimeCellValue.fromDateTime(t.timestamp.toLocal()),

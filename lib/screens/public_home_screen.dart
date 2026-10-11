@@ -71,7 +71,7 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
   }
 
   Stream<List<TreeData>> _stream() =>
-      widget.treeStream ?? TreeService().streamTrees();
+      widget.treeStream ?? TreeService().streamPublicTrees();
   @override
   void didUpdateWidget(covariant PublicHomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -83,12 +83,13 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
     currentPage: PublicPage.beranda,
     body: PublicPageScroll(
       controller: _scroll,
+      underHeader: true,
       children: [
+        const _Hero(),
         PublicContainer(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const PublicReveal(milliseconds: 320, child: _Hero()),
               StreamBuilder<List<TreeData>>(
                 stream: _trees,
                 builder: (context, snapshot) {
@@ -124,29 +125,13 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      LayoutBuilder(
-                        builder: (context, box) {
-                          final overlap =
-                              PublicUi.desktop(context, box.maxWidth)
-                              ? 24.0
-                              : 0.0;
-                          return Padding(
-                            padding: EdgeInsets.symmetric(horizontal: overlap),
-                            child: Transform.translate(
-                              offset: Offset(0, -overlap),
-                              child: Padding(
-                                padding: EdgeInsets.only(
-                                  top: overlap == 0 ? 16 : 0,
-                                ),
-                                child: _Summary(
-                                  trees: trees,
-                                  selected: _previewCondition,
-                                  onSelect: _exploreCondition,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: _Summary(
+                          trees: trees,
+                          selected: _previewCondition,
+                          onSelect: _exploreCondition,
+                        ),
                       ),
                       const SizedBox(height: 40),
                       LayoutBuilder(
@@ -335,7 +320,7 @@ class _Hero extends StatelessWidget {
         ),
       ];
       return ClipRRect(
-        borderRadius: BorderRadius.circular(wide ? 24 : 20),
+        borderRadius: BorderRadius.zero,
         child: Stack(
           children: [
             Positioned.fill(
@@ -358,11 +343,20 @@ class _Hero extends StatelessWidget {
               ),
             ),
             ConstrainedBox(
-              constraints: BoxConstraints(minHeight: wide ? 460 : 480),
+              constraints: BoxConstraints(minHeight: wide ? 560 : 0),
               child: Padding(
-                padding: wide
-                    ? const EdgeInsets.all(48)
-                    : const EdgeInsets.fromLTRB(24, 72, 24, 24),
+                padding: EdgeInsets.fromLTRB(
+                  wide
+                      ? ((box.maxWidth - 1200) / 2)
+                            .clamp(32.0, double.infinity)
+                            .toDouble()
+                      : 24,
+                  PublicUi.headerHeight(context) +
+                      MediaQuery.paddingOf(context).top +
+                      (wide ? 64 : 36),
+                  wide ? 40 : 24,
+                  wide ? 64 : 36,
+                ),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: ConstrainedBox(
@@ -384,7 +378,7 @@ class _Hero extends StatelessWidget {
                         Text(
                           'Kenali pohonnya.',
                           style: TextStyle(
-                            fontSize: wide ? 52 : 34,
+                            fontSize: wide ? 56 : 32,
                             fontWeight: FontWeight.w700,
                             letterSpacing: -1.2,
                             height: 1.1,
@@ -394,7 +388,7 @@ class _Hero extends StatelessWidget {
                         Text(
                           'Jaga kotanya.',
                           style: TextStyle(
-                            fontSize: wide ? 52 : 34,
+                            fontSize: wide ? 56 : 32,
                             fontWeight: FontWeight.w700,
                             letterSpacing: -1.2,
                             height: 1.1,
@@ -429,7 +423,7 @@ class _Hero extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: 12,
+              bottom: 12,
               right: 12,
               child: Material(
                 color: PublicUi.ink.withValues(alpha: .65),

@@ -18,12 +18,14 @@ class TreeBadges extends StatelessWidget {
         TreeSilhouette(color: treeConditionColor(tree.condition), size: 18),
       ),
       _badge(
-        tree.status == TreeStatus.verified
-            ? 'Terverifikasi'
-            : 'Menunggu verifikasi',
-        AppColors.navy,
+        tree.status.label,
+        tree.status == TreeStatus.rejected
+            ? Colors.deepOrange.shade800
+            : AppColors.navy,
         Icon(
-          tree.status == TreeStatus.verified
+          tree.status == TreeStatus.rejected
+              ? Icons.feedback_outlined
+              : tree.status == TreeStatus.verified
               ? Icons.verified_outlined
               : Icons.schedule_rounded,
           size: 16,

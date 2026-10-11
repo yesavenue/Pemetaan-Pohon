@@ -1,3 +1,4 @@
+import '../utils/pruning_photo_compressor.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -93,6 +94,7 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
   LatLng? _position;
   bool _isFetchingLocation = false;
   bool _isPickingPhoto = false;
+  bool _isCompressingPhoto = false;
   bool _isSaving = false;
   String? _locationError;
 
@@ -195,25 +197,27 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
     for (final controller in _draftControllers) {
       controller.addListener(_draftTextChanged);
     }
-    _editSubscription = _treeService.streamTrees().listen(
-      (trees) {
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _latestEditTree = trees
-              .where((item) => item.id == tree.id)
-              .firstOrNull;
-          _editLoaded = true;
-          _editReadFailed = false;
-        });
-      },
-      onError: (Object error) {
-        if (mounted) {
-          setState(() => _editReadFailed = true);
-        }
-      },
-    );
+    _editSubscription = _treeService
+        .streamTree(widget.initialTree!.id)
+        .listen(
+          (trees) {
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _latestEditTree = trees
+                  .where((item) => item.id == tree.id)
+                  .firstOrNull;
+              _editLoaded = true;
+              _editReadFailed = false;
+            });
+          },
+          onError: (Object error) {
+            if (mounted) {
+              setState(() => _editReadFailed = true);
+            }
+          },
+        );
   }
 
   @override
@@ -246,15 +250,27 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
     }
     setState(() => _isPickingPhoto = true);
     try {
-      final photo = await _picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 40,
-        maxWidth: 900,
-      );
+      final photo = await _picker.pickImage(source: ImageSource.camera);
       if (photo == null) {
         return;
       }
-      final bytes = await photo.readAsBytes();
+      if (!mounted) return;
+      if (await photo.length() > pruningPhotoMaxInputBytes) {
+        throw const FormatException(
+          'Foto terlalu besar untuk diproses. Pilih resolusi lebih rendah.',
+        );
+      }
+      if (!mounted) return;
+      final original = await photo.readAsBytes();
+      if (!mounted) return;
+      if (original.length > treePhotoMaxBytes) {
+        setState(() => _isCompressingPhoto = true);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        if (!mounted) return;
+      }
+      final bytes = original.length > treePhotoMaxBytes
+          ? await compute(compressTreePhoto, original)
+          : await compressTreePhoto(original);
       final encoded = base64Encode(bytes);
       if (!mounted) {
         return;
@@ -267,13 +283,18 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
         _photoBytes = bytes;
         _photoBase64 = encoded;
       });
+    } on FormatException catch (error) {
+      _message(error.message);
     } catch (_) {
       _message(
         'Kamera tidak dapat dibuka. Periksa izin kamera lalu coba lagi.',
       );
     } finally {
       if (mounted) {
-        setState(() => _isPickingPhoto = false);
+        setState(() {
+          _isPickingPhoto = false;
+          _isCompressingPhoto = false;
+        });
       }
     }
   }
@@ -507,7 +528,7 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
                               ),
                             ),
                             Text(
-                              '${distance.toStringAsFixed(1)} m dari lokasi Anda • oleh ${t.surveyorName}',
+                              '${distance.toStringAsFixed(1)} m dari lokasi Anda${t.surveyorName.isEmpty ? '' : ' • oleh ${t.surveyorName}'}',
                               style: const TextStyle(
                                 fontSize: 14,
                                 color: Colors.black54,
@@ -623,7 +644,7 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
           ? _keteranganKondisiController.text.trim()
           : '',
     );
-    final error = await _treeService.updateTree(updated);
+    final error = await _treeService.resubmitTree(updated);
     if (!mounted) {
       return;
     }
@@ -1135,7 +1156,9 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
           onPressed: _isPickingPhoto ? null : _takePhoto,
           icon: const Icon(Icons.camera_alt_outlined),
           label: Text(
-            _isPickingPhoto
+            _isCompressingPhoto
+                ? 'Menyiapkan foto…'
+                : _isPickingPhoto
                 ? 'Membuka kamera...'
                 : _photoBytes == null
                 ? 'Ambil Foto'

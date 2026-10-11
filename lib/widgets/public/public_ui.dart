@@ -132,11 +132,13 @@ class PublicPageScroll extends StatelessWidget {
   final List<Widget> children;
   final ScrollController? controller;
   final EdgeInsets padding;
+  final bool underHeader;
   const PublicPageScroll({
     super.key,
     required this.children,
     this.controller,
     this.padding = EdgeInsets.zero,
+    this.underHeader = false,
   });
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
@@ -144,7 +146,10 @@ class PublicPageScroll extends StatelessWidget {
     controller: controller,
     padding: padding.add(
       EdgeInsets.only(
-        top: PublicUi.headerHeight(context) + MediaQuery.paddingOf(context).top,
+        top: underHeader
+            ? 0
+            : PublicUi.headerHeight(context) +
+                  MediaQuery.paddingOf(context).top,
       ),
     ),
     child: Column(

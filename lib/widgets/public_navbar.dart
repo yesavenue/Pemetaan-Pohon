@@ -1,4 +1,4 @@
-import 'dart:ui';
+import 'public/public_form_exit_guard.dart';
 
 import 'package:flutter/material.dart';
 import '../screens/login_screen.dart';
@@ -31,12 +31,15 @@ IconData _icon(PublicPage page, {bool active = false}) => switch (page) {
 bool _wide(BuildContext context) =>
     PublicUi.desktop(context, MediaQuery.sizeOf(context).width);
 
-void navigateToPublicPage(
+Future<void> navigateToPublicPage(
   BuildContext context,
   PublicPage page,
   PublicPage current,
-) {
+) async {
   if (page == current) return;
+  final guard = PublicFormExitScope.of(context);
+  if (guard != null && !await guard.confirmExit()) return;
+  if (!context.mounted) return;
   final Widget target = switch (page) {
     PublicPage.beranda => const PublicHomeScreen(),
     PublicPage.peta => const PublicMapViewerScreen(),
@@ -49,7 +52,7 @@ void navigateToPublicPage(
   ).pushReplacement(MaterialPageRoute<void>(builder: (_) => target));
 }
 
-/// A pinned header overlays the main scroll, exposing content through glass.
+/// Beranda overlays the hero; other pages always use an opaque header.
 class PublicScaffold extends StatefulWidget {
   final PublicPage currentPage;
   final Widget body;
@@ -90,7 +93,7 @@ class _PublicScaffoldState extends State<PublicScaffold> {
   }
 
   bool _scroll(ScrollNotification n) {
-    if (widget.currentPage == PublicPage.peta ||
+    if (widget.currentPage != PublicPage.beranda ||
         n.depth != 0 ||
         n.metrics.axis != Axis.vertical) {
       return false;
@@ -112,10 +115,12 @@ class _PublicScaffoldState extends State<PublicScaffold> {
         final largeText = MediaQuery.textScalerOf(context).scale(14) > 18.2;
         return PopScope<Object?>(
           canPop:
-              widget.navigationEnabled &&
-              (widget.currentPage == PublicPage.beranda ||
-                  Navigator.of(context).canPop()),
+              PublicFormExitScope.of(context)?.allowPop ??
+              (widget.navigationEnabled &&
+                  (widget.currentPage == PublicPage.beranda ||
+                      Navigator.of(context).canPop())),
           onPopInvokedWithResult: (didPop, result) {
+            if (PublicFormExitScope.of(context) != null) return;
             if (!didPop &&
                 widget.navigationEnabled &&
                 widget.currentPage != PublicPage.beranda) {
@@ -146,7 +151,7 @@ class _PublicScaffoldState extends State<PublicScaffold> {
                   right: 0,
                   child: PublicNavbar(
                     currentPage: widget.currentPage,
-                    glass: _glass,
+                    glass: widget.currentPage == PublicPage.beranda && !_glass,
                     extraActions: widget.extraActions,
                     enabled: widget.navigationEnabled,
                     onNavigate: (p) => _navigate(context, p),
@@ -258,130 +263,165 @@ class PublicNavbar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     final wide = _wide(context);
     return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: glass ? 1 : 0),
+      tween: Tween(begin: glass ? 1 : 0, end: glass ? 1 : 0),
       duration: PublicUi.duration(context, 200),
       curve: Curves.easeOut,
-      builder: (context, t, child) => ClipRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14 * t, sigmaY: 14 * t),
-          child: Container(
-            key: ValueKey(
-              glass ? 'public-header-glass' : 'public-header-solid',
+      builder: (context, t, child) => Container(
+        key: ValueKey(
+          glass ? 'public-header-transparent' : 'public-header-solid',
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 1 - t),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: .06 * (1 - t)),
+              blurRadius: 12,
+              offset: const Offset(0, 3),
             ),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 1 - .28 * t),
-              border: Border(
-                bottom: BorderSide(
-                  color: Color.lerp(
-                    PublicUi.border,
-                    Colors.white.withValues(alpha: .45),
-                    t,
-                  )!,
-                ),
-              ),
+          ],
+          border: Border(
+            bottom: BorderSide(
+              color: Color.lerp(
+                PublicUi.border,
+                Colors.white.withValues(alpha: .18),
+                t,
+              )!,
             ),
-            child: SafeArea(
-              bottom: false,
-              child: SizedBox(
-                height: PublicUi.headerHeight(context),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1264),
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: wide ? 32 : 12),
-                      child: Row(
-                        children: [
-                          Image.asset(
-                            appLogoAsset,
-                            fit: BoxFit.contain,
-                            filterQuality: FilterQuality.medium,
-                            width: wide ? 40 : 32,
-                            height: wide ? 40 : 32,
-                            errorBuilder: (_, error, stack) =>
-                                const Icon(Icons.park, color: PublicUi.green),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Text(
-                                  'Pemetaan Pohon',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: PublicUi.brandTitleStyle,
+          ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: SizedBox(
+            height: PublicUi.headerHeight(context),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1264),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: wide ? 32 : 12),
+                  child: Row(
+                    children: [
+                      Image.asset(
+                        appLogoAsset,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.medium,
+                        width: wide ? 40 : 32,
+                        height: wide ? 40 : 32,
+                        errorBuilder: (_, error, stack) =>
+                            const Icon(Icons.park, color: PublicUi.green),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Pemetaan Pohon',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: PublicUi.brandTitleStyle.copyWith(
+                                color: Color.lerp(
+                                  PublicUi.ink,
+                                  Colors.white,
+                                  t,
                                 ),
-                                Text(
-                                  'Kota Cirebon',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: PublicUi.brandSubtitleStyle,
-                                ),
-                              ],
+                              ),
                             ),
-                          ),
-                          if (wide)
-                            for (final p in PublicPage.values)
-                              TextButton(
-                                onPressed: !enabled
-                                    ? null
-                                    : () => onNavigate != null
-                                          ? onNavigate!(p)
-                                          : navigateToPublicPage(
-                                              context,
-                                              p,
-                                              currentPage,
-                                            ),
-                                style: TextButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                  ),
+                            Text(
+                              'Kota Cirebon',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: PublicUi.brandSubtitleStyle.copyWith(
+                                color: Color.lerp(
+                                  PublicUi.muted,
+                                  Colors.white,
+                                  t,
                                 ),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        width: 2,
-                                        color: p == currentPage
-                                            ? PublicUi.green
-                                            : Colors.transparent,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    _label(p),
-                                    style: TextStyle(
-                                      color: p == currentPage
-                                          ? PublicUi.green
-                                          : PublicUi.ink,
-                                      fontSize: 14,
-                                      fontWeight: p == currentPage
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (wide)
+                        for (final p in PublicPage.values)
+                          TextButton(
+                            onPressed: !enabled
+                                ? null
+                                : () => onNavigate != null
+                                      ? onNavigate!(p)
+                                      : navigateToPublicPage(
+                                          context,
+                                          p,
+                                          currentPage,
+                                        ),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                              ),
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    width: 2,
+                                    color: p == currentPage
+                                        ? Color.lerp(
+                                            PublicUi.green,
+                                            const Color(0xFFBFE2CE),
+                                            t,
+                                          )!
+                                        : Colors.transparent,
                                   ),
                                 ),
                               ),
-                          ...extraActions,
-                          if (wide)
-                            OutlinedButton.icon(
-                              onPressed: enabled ? () => _login(context) : null,
-                              icon: const Icon(Icons.login, size: 18),
-                              label: const Text('Login Petugas'),
-                            )
-                          else
-                            IconButton(
-                              tooltip: 'Login Petugas',
-                              onPressed: enabled ? () => _login(context) : null,
-                              icon: const Icon(Icons.login),
+                              child: Text(
+                                _label(p),
+                                style: TextStyle(
+                                  color: Color.lerp(
+                                    p == currentPage
+                                        ? PublicUi.green
+                                        : PublicUi.ink,
+                                    Colors.white,
+                                    t,
+                                  ),
+                                  fontSize: 14,
+                                  fontWeight: p == currentPage
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                ),
+                              ),
                             ),
-                        ],
-                      ),
-                    ),
+                          ),
+                      ...extraActions,
+                      if (wide)
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Color.lerp(
+                              PublicUi.green,
+                              Colors.white,
+                              t,
+                            ),
+                            side: BorderSide(
+                              color: Color.lerp(
+                                PublicUi.border,
+                                Colors.white70,
+                                t,
+                              )!,
+                            ),
+                          ),
+                          onPressed: enabled ? () => _login(context) : null,
+                          icon: const Icon(Icons.login, size: 18),
+                          label: const Text('Login Petugas'),
+                        )
+                      else
+                        IconButton(
+                          tooltip: 'Login Petugas',
+                          color: Color.lerp(PublicUi.green, Colors.white, t),
+                          onPressed: enabled ? () => _login(context) : null,
+                          icon: const Icon(Icons.login),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -392,6 +432,13 @@ class PublicNavbar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  void _login(BuildContext context) =>
-      showDialog<void>(context: context, builder: (_) => const LoginScreen());
+  Future<void> _login(BuildContext context) async {
+    final guard = PublicFormExitScope.of(context);
+    if (guard != null && !await guard.confirmExit()) return;
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => const LoginScreen(),
+    );
+  }
 }

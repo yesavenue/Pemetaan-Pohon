@@ -38,7 +38,7 @@ class _PublicStatistikScreenState extends State<PublicStatistikScreen> {
   }
 
   Stream<List<TreeData>> _newStream() =>
-      widget.treeStream ?? TreeService().streamTrees();
+      widget.treeStream ?? TreeService().streamPublicTrees();
   @override
   void didUpdateWidget(covariant PublicStatistikScreen oldWidget) {
     super.didUpdateWidget(oldWidget);

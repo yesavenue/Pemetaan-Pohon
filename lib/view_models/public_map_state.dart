@@ -76,6 +76,7 @@ class PublicMapState extends ChangeNotifier {
                   _filters.conditions.contains(t.condition)) &&
               (q.isEmpty ||
                   [
+                    t.id,
                     t.species,
                     t.namaJalan,
                     t.kecamatan,
@@ -109,7 +110,11 @@ class PublicMapState extends ChangeNotifier {
   }
 
   void setTrees(List<TreeData> trees) {
-    _trees = trees.where((t) => t.status == TreeStatus.verified).toList();
+    // Defense in depth: keep only public fields even for an injected source.
+    _trees = trees
+        .where((t) => t.status == TreeStatus.verified)
+        .map((t) => TreeData.fromMap(t.id, t.toPublicMap()))
+        .toList();
     _visibleCache = null;
     _reconcileSelection();
     notifyListeners();

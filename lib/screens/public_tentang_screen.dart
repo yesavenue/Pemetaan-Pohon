@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import '../widgets/public/public_ui.dart';
 import '../widgets/public/public_visuals.dart';
 import '../widgets/public/public_footer.dart';
+import '../widgets/public/public_office_location.dart';
 import '../utils/cirebon_regions.dart';
 import '../widgets/public_navbar.dart';
 
@@ -170,6 +171,8 @@ class PublicTentangScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 48),
+              const PublicOfficeLocation(),
               const SizedBox(height: 48),
               const Text(
                 'Pertanyaan yang sering diajukan',

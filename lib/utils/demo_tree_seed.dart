@@ -1,13 +1,17 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
 import 'cirebon_boundary.dart';
 import 'cirebon_regions.dart';
 
 const demoTreeCount = 30;
 const demoTreeMarker = '[DATA CONTOH OTOMATIS v1]';
 
-String demoTreeId(String uid, int index) =>
+String legacyDemoTreeId(String uid, int index) =>
     'dummy_tree_v1_${base64Url.encode(utf8.encode(uid)).replaceAll('=', '')}_${index.toString().padLeft(2, '0')}';
+
+String demoTreeId(String uid, int index) =>
+    'dummy_tree_v2_${sha256.convert(utf8.encode(uid))}_${index.toString().padLeft(2, '0')}';
 
 /// Synthetic locations and district labels are only for exercising the UI.
 /// Stable IDs allow retries without overwriting existing records.

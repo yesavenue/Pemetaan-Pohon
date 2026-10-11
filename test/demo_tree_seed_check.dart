@@ -17,6 +17,19 @@ void main(List<String> arguments) {
     now: now,
   );
   check(data.length == 30, 'Jumlah data harus 30');
+  check(
+    data.every((row) => row.id.startsWith('dummy_tree_v2_')),
+    'ID baru harus v2',
+  );
+  check(
+    data.every((row) => !row.id.contains('YWRtaW4')),
+    'ID public tidak memuat UID Base64',
+  );
+  check(demoTreeId('admin', 0) == data.first.id, 'ID v2 harus stabil');
+  check(
+    legacyDemoTreeId('admin', 0).startsWith('dummy_tree_v1_'),
+    'ID lama hanya untuk pembersihan',
+  );
   check(data.map((item) => item.id).toSet().length == 30, 'ID harus unik');
   final expected = {'sehat': 21, 'sakit': 6, 'rawanTumbang': 3};
   for (final condition in expected.entries) {
