@@ -106,8 +106,9 @@ class TreeService {
             (doc.data()!['revision'] ?? 0) != expected.revision) {
           throw StateError('changed');
         }
+        // Review only changes decision fields. Do not round-trip identity,
+        // coordinates, photo or the original survey timestamp through the client.
         final data = {
-          ...doc.data()!,
           'status': status.name,
           'rejectionReason': status == TreeStatus.rejected ? reason.trim() : '',
           'reviewedAt': FieldValue.serverTimestamp(),
@@ -132,8 +133,11 @@ class TreeService {
       return null;
     } on StateError {
       return 'Data berubah atau sudah dihapus. Tinjau ulang data terbaru.';
+    } on FirebaseException catch (error) {
+      return 'Keputusan belum tersimpan (${error.code}). '
+          'Silakan coba lagi.';
     } catch (_) {
-      return 'Keputusan belum tersimpan. Periksa koneksi dan izin akun.';
+      return 'Keputusan belum tersimpan karena kesalahan tidak terduga.';
     }
   }
 

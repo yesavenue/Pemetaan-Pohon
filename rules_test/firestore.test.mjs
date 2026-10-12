@@ -326,3 +326,35 @@ test('Alasan mendukung beberapa baris tetapi bukan whitespace saja', async () =>
   await assertFails(decide('admin', 'own', 'rejected', 1, ' \n\t '));
   await assertSucceeds(decide('admin', 'own', 'rejected', 1, 'Foto buram.\nMohon ambil dari depan.'));
 });
+
+for (const initialStatus of ['pending', 'verified']) {
+  test(`Review patch lima field menjaga timestamp presisi: ${initialStatus} ke rejected`, async () => {
+    const precise = new Timestamp(1791760412, 707296000);
+    const initial = tree({ timestamp: precise, status: initialStatus, ranahKewenangan: 'Provinsi' });
+    await env.withSecurityRulesDisabled(async (context) => {
+      const trusted = context.firestore();
+      await setDoc(doc(trusted, 'trees/precise'), initial);
+      if (initialStatus === 'verified') {
+        await setDoc(doc(trusted, 'public_trees/precise'), projection(initial));
+      }
+    });
+    const database = db('admin');
+    await assertSucceeds(runTransaction(database, async (tx) => {
+      const privateRef = doc(database, 'trees/precise');
+      const snapshot = await tx.get(privateRef);
+      tx.update(privateRef, {
+        status: 'rejected', rejectionReason: 'Foto perlu diperjelas.',
+        reviewedAt: serverTimestamp(), reviewReadAt: null,
+        revision: snapshot.data().revision + 1,
+      });
+      tx.delete(doc(database, 'public_trees/precise'));
+    }));
+    const result = (await getDoc(doc(database, 'trees/precise'))).data();
+    assert.equal(result.timestamp.isEqual(precise), true);
+    assert.equal(result.surveyorId, initial.surveyorId);
+    assert.equal(result.photoBase64, initial.photoBase64);
+    assert.equal(result.status, 'rejected');
+    assert.equal(result.revision, 1);
+    assert.equal((await getDoc(doc(database, 'public_trees/precise'))).exists(), false);
+  });
+}

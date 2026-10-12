@@ -244,13 +244,13 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _takePhoto() async {
+  Future<void> _pickPhoto(ImageSource source) async {
     if (_busy) {
       return;
     }
     setState(() => _isPickingPhoto = true);
     try {
-      final photo = await _picker.pickImage(source: ImageSource.camera);
+      final photo = await _picker.pickImage(source: source);
       if (photo == null) {
         return;
       }
@@ -287,7 +287,9 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
       _message(error.message);
     } catch (_) {
       _message(
-        'Kamera tidak dapat dibuka. Periksa izin kamera lalu coba lagi.',
+        source == ImageSource.camera
+            ? 'Kamera tidak dapat dibuka. Periksa izin kamera lalu coba lagi.'
+            : 'Foto dari galeri tidak dapat diproses. Coba pilih foto lain.',
       );
     } finally {
       if (mounted) {
@@ -1153,24 +1155,31 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
           ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: _isPickingPhoto ? null : _takePhoto,
+          onPressed: _busy ? null : () => _pickPhoto(ImageSource.camera),
           icon: const Icon(Icons.camera_alt_outlined),
           label: Text(
             _isCompressingPhoto
                 ? 'Menyiapkan foto…'
                 : _isPickingPhoto
-                ? 'Membuka kamera...'
+                ? 'Memproses foto…'
                 : _photoBytes == null
                 ? 'Ambil Foto'
                 : 'Ambil Ulang Foto',
           ),
         ),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : () => _pickPhoto(ImageSource.gallery),
+          icon: const Icon(Icons.photo_library_outlined),
+          label: const Text('Pilih dari Galeri'),
+        ),
         if (_photoBytes != null)
           TextButton.icon(
-            onPressed: () => setState(() {
-              _photoBytes = null;
-              _photoBase64 = null;
-            }),
+            onPressed: _busy
+                ? null
+                : () => setState(() {
+                    _photoBytes = null;
+                    _photoBase64 = null;
+                  }),
             icon: const Icon(Icons.delete_outline),
             label: const Text('Hapus Foto'),
           ),
@@ -1204,7 +1213,9 @@ class _TreeInputScreenState extends State<TreeInputScreen> {
         if (_photoBytes == null)
           const Padding(
             padding: EdgeInsets.only(top: 8),
-            child: Text('Ambil satu foto pohon sebelum menyimpan.'),
+            child: Text(
+              'Ambil foto atau pilih satu foto pohon dari galeri sebelum menyimpan.',
+            ),
           ),
       ],
     );
