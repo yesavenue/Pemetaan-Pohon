@@ -12,9 +12,12 @@ class PublicHeroBackdrop extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reduced = MediaQuery.of(context).disableAnimations;
-    final photo = Image.asset('assets/image/hero_cirebon.png',
+    final compact = MediaQuery.sizeOf(context).width < 700;
+    final photo = Image.asset(
+      compact ? 'assets/image/hero_cirebon_mobile.webp'
+          : 'assets/image/hero_cirebon_desktop.webp',
       key: const ValueKey('public-hero-background'),
-      fit: BoxFit.cover, filterQuality: FilterQuality.high, alignment: const Alignment(.25, 0),
+      fit: BoxFit.cover, filterQuality: FilterQuality.medium, alignment: const Alignment(.25, 0),
       excludeFromSemantics: true,
       errorBuilder: (_, error, stack) => const ColoredBox(color: PublicUi.ink));
     return ClipRect(child: AnimatedBuilder(animation: controller, child: photo,

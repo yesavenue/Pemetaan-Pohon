@@ -37,5 +37,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/image/hero_cirebon.png
+    - assets/image/hero_cirebon_mobile.webp
+    - assets/image/hero_cirebon_desktop.webp
     - assets/image/logo.png
