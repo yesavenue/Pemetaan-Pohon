@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 
 import '../models/app_user.dart';
 import '../utils/surveyor_provisioning.dart';
+import '../utils/auth_messages.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -13,7 +14,7 @@ class AuthService {
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  Future<AppUser?> getUserData(String uid) async {
+  Future<AppUser?> getUserData(String uid, {bool propagateErrors = false}) async {
     try {
       final doc = await _firestore.collection('users').doc(uid).get();
 
@@ -21,7 +22,8 @@ class AuthService {
         return AppUser.fromMap(uid, doc.data()!);
       }
     } catch (_) {
-      // Pemanggil menangani profil yang tidak tersedia.
+      if (propagateErrors) rethrow;
+      // Pemanggil lama menangani profil yang tidak tersedia.
     }
 
     return null;
@@ -35,7 +37,7 @@ class AuthService {
       );
       return null;
     } on FirebaseAuthException catch (e) {
-      return e.message ?? 'Terjadi kesalahan saat login';
+      return authMessage(e.code);
     }
   }
 
@@ -195,7 +197,8 @@ class AuthService {
 
       return null;
     } on FirebaseAuthException catch (e) {
-      return e.message ?? 'Gagal mengirim email reset password';
+      if (e.code == 'user-not-found') return null;
+      return authMessage(e.code);
     }
   }
 

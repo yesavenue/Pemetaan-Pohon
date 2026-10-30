@@ -1,14 +1,23 @@
 import '../widgets/public/public_form_exit_guard.dart';
+
 import 'dart:convert';
+import 'dart:async';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+
 import '../widgets/civic_design.dart';
+
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/tree_pruning_request.dart';
+import '../models/tree_data.dart';
+import 'public_tracking_screen.dart';
+import '../utils/web_download.dart';
 import '../services/pruning_request_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/cirebon_regions.dart';
@@ -30,6 +39,7 @@ const _alasanOptions = [
 ];
 
 class PublicPruningRequestScreen extends StatefulWidget {
+  final TreeData? initialTree;
   // Optional adapters allow UI regression tests without Firebase or a camera.
   final Future<String> Function(TreePruningRequest)? createRequest;
   final Future<XFile?> Function(ImageSource)? pickImage;
@@ -40,6 +50,7 @@ class PublicPruningRequestScreen extends StatefulWidget {
 
   const PublicPruningRequestScreen({
     super.key,
+    this.initialTree,
     this.createRequest,
     this.pickImage,
     this.homeBuilder,
@@ -55,8 +66,42 @@ class PublicPruningRequestScreen extends StatefulWidget {
 
 class _PublicPruningRequestScreenState
     extends State<PublicPruningRequestScreen> {
-  late final _createRequest =
-      widget.createRequest ?? PruningRequestService().createRequest;
+  @override
+  void initState() {
+    super.initState();
+    final tree = widget.initialTree;
+    if (tree == null) return;
+    _alamatPohonController.text =
+        '${tree.namaJalan} (Pohon ${tree.id} — ${tree.species})';
+    if (cirebonKecamatanList.contains(tree.kecamatan)) {
+      _selectedKecamatan = tree.kecamatan;
+      if (kelurahanFor(tree.kecamatan).contains(tree.kelurahan)) {
+        _selectedKelurahan = tree.kelurahan;
+      }
+    }
+    if (tree.latitude.isFinite &&
+        tree.longitude.isFinite &&
+        tree.latitude.abs() <= 90 &&
+        tree.longitude.abs() <= 180 &&
+        (tree.latitude != 0 || tree.longitude != 0)) {
+      _position = Position(
+        latitude: tree.latitude,
+        longitude: tree.longitude,
+        timestamp: tree.timestamp,
+        accuracy: 0,
+        altitude: 0,
+        altitudeAccuracy: 0,
+        heading: 0,
+        headingAccuracy: 0,
+        speed: 0,
+        speedAccuracy: 0,
+      );
+    }
+  }
+
+  late final _service = PruningRequestService();
+  PruningReceipt? _receipt;
+  late final _createRequest = widget.createRequest ?? _service.createRequest;
   final _picker = ImagePicker();
 
   final _namaController = TextEditingController();
@@ -74,6 +119,7 @@ class _PublicPruningRequestScreenState
   Position? _position;
   bool _isFetchingLocation = false;
   String? _locationError;
+  bool _manualPoint = false;
 
   Uint8List? _fotoPohonBytes;
   String? _fotoPohonBase64;
@@ -387,12 +433,45 @@ class _PublicPruningRequestScreenState
     });
   }
 
+  Future<void> _chooseLocation() async {
+    if (_busy) return;
+    var selected = _position == null ? null : LatLng(_position!.latitude, _position!.longitude);
+    final point = await showDialog<LatLng>(context: context, builder: (dialogContext) =>
+      StatefulBuilder(builder: (context, update) => AlertDialog(
+        title: const Text('Tentukan titik pohon'),
+        content: SizedBox(width: 640, height: MediaQuery.sizeOf(context).height * .45,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Text('Ketuk lokasi pohon pada peta, lalu gunakan titik tersebut.'),
+            const SizedBox(height: 12),
+            Expanded(child: FlutterMap(options: MapOptions(
+              initialCenter: selected ?? const LatLng(-6.7183, 108.5522), initialZoom: 15,
+              onTap: (_, point) => update(() => selected = point)), children: [
+              TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.pemetaanpohon.app'),
+              if (selected != null) MarkerLayer(markers: [Marker(point: selected!, width: 48, height: 48,
+                child: const Icon(Icons.location_on, size: 42, color: PublicUi.green))]),
+              RichAttributionWidget(attributions: const [TextSourceAttribution('OpenStreetMap contributors')]),
+            ])),
+            if (selected != null) Text('${selected!.latitude.toStringAsFixed(5)}, ${selected!.longitude.toStringAsFixed(5)}'),
+          ])),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Batal')),
+          FilledButton(onPressed: selected == null ? null : () => Navigator.pop(dialogContext, selected), child: const Text('Gunakan titik'))],
+      )));
+    if (!mounted || point == null) return;
+    setState(() {
+      _position = Position(latitude: point.latitude, longitude: point.longitude,
+        timestamp: DateTime.now(), accuracy: 0, altitude: 0, altitudeAccuracy: 0,
+        heading: 0, headingAccuracy: 0, speed: 0, speedAccuracy: 0);
+      _manualPoint = true;
+      _locationError = null;
+      _pernyataanBenar = false;
+    });
+  }
+
   Future<void> _fetchLocation() async {
     if (_busy) return;
     setState(() {
       _isFetchingLocation = true;
       _locationError = null;
-      _position = null;
       _pernyataanBenar = false;
     });
     try {
@@ -401,7 +480,7 @@ class _PublicPruningRequestScreenState
         position = await widget.locate!();
       } else {
         if (!await Geolocator.isLocationServiceEnabled()) {
-          throw StateError('GPS tidak aktif');
+          throw StateError('Layanan lokasi belum aktif. Aktifkan lokasi perangkat atau pilih titik melalui peta.');
         }
         var permission = await Geolocator.checkPermission();
         if (permission == LocationPermission.denied) {
@@ -409,7 +488,7 @@ class _PublicPruningRequestScreenState
         }
         if (permission == LocationPermission.denied ||
             permission == LocationPermission.deniedForever) {
-          throw StateError('Izin ditolak');
+          throw StateError('Izin lokasi ditolak. Buka pengaturan izin lokasi situs di browser, atau pilih titik melalui peta.');
         }
         position = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
@@ -427,13 +506,15 @@ class _PublicPruningRequestScreenState
       }
       setState(() {
         _position = position;
+        _manualPoint = false;
         _pernyataanBenar = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         setState(
-          () => _locationError =
-              'Lokasi GPS tidak digunakan. Anda tetap dapat mengisi alamat secara manual.',
+          () => _locationError = error is StateError ? error.message.toString()
+              : error is TimeoutException ? 'Pencarian lokasi terlalu lama. Coba di luar ruangan atau pilih titik melalui peta.'
+              : 'Lokasi belum berhasil didapat. Periksa izin browser dan koneksi, atau pilih titik melalui peta. Titik sebelumnya tetap disimpan.',
         );
       }
     } finally {
@@ -441,9 +522,9 @@ class _PublicPruningRequestScreenState
     }
   }
 
-  void _notice(String message) => ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(message)));
+  void _notice(String message) =>
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
   Future<void> _submit() async {
     if (!_canSubmit) return;
     setState(() {
@@ -478,8 +559,7 @@ class _PublicPruningRequestScreenState
       if (!mounted) return;
       setState(() {
         _isSubmitting = false;
-        _submitError =
-            'Gagal menyimpan data. Isian tetap tersedia. Periksa koneksi lalu coba kembali.';
+        _submitError = 'Gagal menyimpan data. Isian tetap tersedia. Periksa koneksi lalu coba kembali.';
       });
       return;
     }
@@ -487,6 +567,7 @@ class _PublicPruningRequestScreenState
     // Rendering/navigation after a successful write must not report write failure.
     setState(() {
       _submittedNumber = requestNumber;
+      _receipt = widget.createRequest == null ? _service.lastReceipt : null;
       _isSubmitting = false;
     });
   }
@@ -510,8 +591,7 @@ class _PublicPruningRequestScreenState
     } catch (_) {
       if (mounted) {
         setState(
-          () => _copyNotice =
-              'Nomor belum berhasil disalin. Anda dapat menyeleksi teks nomor untuk menyalinnya.',
+          () => _copyNotice = 'Nomor belum berhasil disalin. Anda dapat menyeleksi teks nomor untuk menyalinnya.',
         );
       }
     } finally {
@@ -526,6 +606,7 @@ class _PublicPruningRequestScreenState
     }
     setState(() {
       _submittedNumber = null;
+      _receipt = null;
       _copyNotice = null;
       _submitError = null;
       _step = 0;
@@ -571,6 +652,17 @@ class _PublicPruningRequestScreenState
     super.dispose();
   }
 
+  Future<void> _saveReceipt() async {
+    final receipt = _receipt;
+    if (receipt == null) return;
+    try {
+      downloadBytesAsFile(Uint8List.fromList(utf8.encode(receipt.text)),
+        'bukti-${receipt.requestNumber}.txt', mimeType: 'text/plain;charset=utf-8');
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unduhan belum berhasil. Salin bukti yang ditampilkan di halaman ini.')));
+    }
+  }
+
   Widget _successBody() => PublicPageScroll(
     children: [
       Center(
@@ -600,6 +692,18 @@ class _PublicPruningRequestScreenState
                   'Nomor Permohonan: $_submittedNumber',
                   textAlign: TextAlign.center,
                 ),
+                if (_receipt != null) ...[
+                  const SizedBox(height: 20),
+                  PublicPanel(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    const Text('Simpan bukti pengajuan Anda', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 12),
+                    SelectableText(_receipt!.text),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(onPressed: _saveReceipt, icon: const Icon(Icons.download_outlined), label: const Text('Unduh bukti (.txt)')),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PublicTrackingScreen(initialCode: _receipt!.accessCode))), icon: const Icon(Icons.manage_search), label: const Text('Lacak permohonan ini')),
+                  ])),
+                ],
                 if (_copyNotice != null)
                   Semantics(
                     liveRegion: true,
@@ -685,11 +789,15 @@ class _PublicPruningRequestScreenState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+                            onPressed: _busy ? null : () async {
+                              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PublicTrackingScreen()));
+                            },
+                            icon: const Icon(Icons.manage_search), label: const Text('Sudah mengajukan? Lacak permohonan'))),
                           const CivicHeading(
                             eyebrow: 'LAYANAN MASYARAKAT',
                             title: 'Rawat pohon, mulai dari laporanmu.',
-                            description:
-                                'Ajukan permohonan perapihan tanpa login. Lengkapi data dan foto untuk diajukan kepada DPRKP Kota Cirebon.',
+                            description: 'Ajukan permohonan perapihan tanpa login. Lengkapi data dan foto untuk diajukan kepada DPRKP Kota Cirebon.',
                           ),
                           const SizedBox(height: 24),
                           PublicPanel(
@@ -1065,12 +1173,16 @@ class _PublicPruningRequestScreenState
           ),
           const SizedBox(height: 16),
           const Text(
-            'Lokasi GPS (opsional). Gunakan jika sedang berada di lokasi pohon; alamat manual tetap dapat digunakan.',
+            'Titik pohon (opsional). Gunakan lokasi perangkat hanya saat Anda berada di dekat pohon. Jika berbeda, pilih titik melalui peta. Alamat, kecamatan, dan kelurahan tetap perlu dilengkapi.',
           ),
           if (_position != null)
             Text(
-              'Lokasi berhasil diperoleh: ${_position!.latitude.toStringAsFixed(5)}, ${_position!.longitude.toStringAsFixed(5)}',
+              'Koordinat pohon: ${_position!.latitude.toStringAsFixed(5)}, ${_position!.longitude.toStringAsFixed(5)}',
             ),
+          if (_position != null && !_manualPoint && _position!.accuracy > 0)
+            Text('Perkiraan akurasi GPS: ±${_position!.accuracy.round()} meter. Periksa titik melalui peta.'),
+          if (_position != null && _manualPoint)
+            const Text('Titik dipilih melalui peta. Pastikan sesuai dengan alamat pohon.'),
           if (_locationError != null)
             Semantics(liveRegion: true, child: Text(_locationError!)),
           Wrap(
@@ -1080,16 +1192,18 @@ class _PublicPruningRequestScreenState
                 onPressed: _busy ? null : _fetchLocation,
                 icon: const Icon(Icons.my_location),
                 label: Text(
-                  _position == null ? 'Gunakan Lokasi Saya' : 'Perbarui Lokasi',
+                  _isFetchingLocation ? 'Mencari lokasi…' : _position == null ? 'Gunakan Lokasi Saya' : 'Perbarui Lokasi',
                 ),
               ),
+              OutlinedButton.icon(onPressed: _busy ? null : _chooseLocation,
+                icon: const Icon(Icons.pin_drop_outlined), label: Text(_position == null ? 'Pilih titik di peta' : 'Periksa / ubah titik')),
               if (_position != null)
                 TextButton(
-                  onPressed: () => setState(() {
+                  onPressed: _busy ? null : () => setState(() {
                     _position = null;
                     _pernyataanBenar = false;
                   }),
-                  child: const Text('Hapus lokasi GPS'),
+                  child: const Text('Hapus titik'),
                 ),
             ],
           ),

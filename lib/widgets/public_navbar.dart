@@ -1,6 +1,7 @@
 import 'public/public_form_exit_guard.dart';
 
 import 'package:flutter/material.dart';
+
 import '../screens/login_screen.dart';
 import '../screens/public_home_screen.dart';
 import '../screens/public_map_viewer_screen.dart';
@@ -8,6 +9,7 @@ import '../screens/public_pruning_request_screen.dart';
 import '../screens/public_statistik_screen.dart';
 import '../screens/public_tentang_screen.dart';
 import 'public/public_ui.dart';
+import 'public/public_home_interactions.dart' show publicHeroProgress;
 import '../utils/branding.dart';
 
 enum PublicPage { beranda, peta, statistik, permohonan, tentang }
@@ -47,9 +49,8 @@ Future<void> navigateToPublicPage(
     PublicPage.permohonan => const PublicPruningRequestScreen(),
     PublicPage.tentang => const PublicTentangScreen(),
   };
-  Navigator.of(
-    context,
-  ).pushReplacement(MaterialPageRoute<void>(builder: (_) => target));
+  Navigator.of(context)
+      .pushReplacement(MaterialPageRoute<void>(builder: (_) => target));
 }
 
 /// Beranda overlays the hero; other pages always use an opaque header.
@@ -72,7 +73,7 @@ class PublicScaffold extends StatefulWidget {
 }
 
 class _PublicScaffoldState extends State<PublicScaffold> {
-  bool _glass = false;
+  double _headerOffset = 0;
   void _navigate(BuildContext context, PublicPage page) {
     if (!widget.navigationEnabled || page == widget.currentPage) return;
     if (widget.onNavigate != null) {
@@ -88,22 +89,20 @@ class _PublicScaffoldState extends State<PublicScaffold> {
     if (oldWidget.currentPage != widget.currentPage ||
         oldWidget.body.runtimeType != widget.body.runtimeType) {
       // Form → success (and Ajukan lagi) mounts a fresh scroll at offset zero.
-      _glass = false;
+      _headerOffset = 0;
     }
   }
 
   bool _scroll(ScrollNotification n) {
-    if (widget.currentPage != PublicPage.beranda ||
-        n.depth != 0 ||
+    // Only the page scroll moves the header; map gestures and nested lists do not.
+    if (widget.currentPage == PublicPage.peta || n.depth != 0 ||
         n.metrics.axis != Axis.vertical) {
       return false;
     }
-    final next = n.metrics.pixels >= 32
-        ? true
-        : n.metrics.pixels <= 8
-        ? false
-        : _glass;
-    if (next != _glass) setState(() => _glass = next);
+    final next = widget.currentPage == PublicPage.beranda
+        ? publicHeroProgress(n.metrics.pixels)
+        : (n.metrics.pixels > 24 ? 1.0 : 0.0);
+    if (next != _headerOffset) setState(() => _headerOffset = next);
     return false;
   }
 
@@ -146,16 +145,29 @@ class _PublicScaffoldState extends State<PublicScaffold> {
                   ),
                 ),
                 Positioned(
+                  key: const ValueKey('public-header-position'),
                   top: 0,
                   left: 0,
                   right: 0,
-                  child: PublicNavbar(
+                  child: AnimatedSlide(
+                    key: const ValueKey('public-header-slide'),
+                    offset: Offset(0, -_headerOffset),
+                    duration: widget.currentPage == PublicPage.beranda
+                        ? Duration.zero : PublicUi.duration(context, 240),
+                    curve: Curves.easeOutCubic,
+                    child: IgnorePointer(ignoring: _headerOffset > 0, child: ExcludeFocus(
+                    excluding: _headerOffset > 0,
+                    child: ExcludeSemantics(
+                      excluding: _headerOffset > 0,
+                      child: PublicNavbar(
                     currentPage: widget.currentPage,
-                    glass: widget.currentPage == PublicPage.beranda && !_glass,
+                    glass: widget.currentPage == PublicPage.beranda,
                     extraActions: widget.extraActions,
                     enabled: widget.navigationEnabled,
                     onNavigate: (p) => _navigate(context, p),
-                  ),
+                      ),
+                    ),
+                  ))),
                 ),
               ],
             ),
@@ -300,46 +312,32 @@ class PublicNavbar extends StatelessWidget implements PreferredSizeWidget {
                   padding: EdgeInsets.symmetric(horizontal: wide ? 32 : 12),
                   child: Row(
                     children: [
-                      Image.asset(
-                        appLogoAsset,
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.medium,
-                        width: wide ? 40 : 32,
-                        height: wide ? 40 : 32,
-                        errorBuilder: (_, error, stack) =>
-                            const Icon(Icons.park, color: PublicUi.green),
-                      ),
-                      const SizedBox(width: 8),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              'Pemetaan Pohon',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: PublicUi.brandTitleStyle.copyWith(
-                                color: Color.lerp(
-                                  PublicUi.ink,
-                                  Colors.white,
-                                  t,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Semantics(
+                            label: 'Pemetaan Pohon Kota Cirebon',
+                            image: true,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(maxWidth: wide ? 260 : 210),
+                              child: Image.asset(
+                                appLogoAsset,
+                                key: const ValueKey('public-brand-logo'),
+                                width: wide ? 260 : 210,
+                                height: 64,
+                                fit: BoxFit.contain,
+                                color: glass ? Colors.white : null,
+                                colorBlendMode: BlendMode.srcIn,
+                                alignment: Alignment.centerLeft,
+                                excludeFromSemantics: true,
+                                filterQuality: FilterQuality.high,
+                                errorBuilder: (_, error, stack) => Text(
+                                  'Pemetaan Pohon\nKota Cirebon',
+                                  style: TextStyle(color: glass ? Colors.white : PublicUi.ink, fontWeight: FontWeight.w700),
                                 ),
                               ),
                             ),
-                            Text(
-                              'Kota Cirebon',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: PublicUi.brandSubtitleStyle.copyWith(
-                                color: Color.lerp(
-                                  PublicUi.muted,
-                                  Colors.white,
-                                  t,
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                       if (wide)
@@ -394,33 +392,13 @@ class PublicNavbar extends StatelessWidget implements PreferredSizeWidget {
                             ),
                           ),
                       ...extraActions,
-                      if (wide)
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Color.lerp(
-                              PublicUi.green,
-                              Colors.white,
-                              t,
-                            ),
-                            side: BorderSide(
-                              color: Color.lerp(
-                                PublicUi.border,
-                                Colors.white70,
-                                t,
-                              )!,
-                            ),
-                          ),
-                          onPressed: enabled ? () => _login(context) : null,
-                          icon: const Icon(Icons.login, size: 18),
-                          label: const Text('Login Petugas'),
-                        )
-                      else
-                        IconButton(
-                          tooltip: 'Login Petugas',
-                          color: Color.lerp(PublicUi.green, Colors.white, t),
-                          onPressed: enabled ? () => _login(context) : null,
-                          icon: const Icon(Icons.login),
-                        ),
+                      IconButton(
+                        key: const ValueKey('header-login'),
+                        tooltip: 'Login Petugas',
+                        color: glass ? Colors.white : PublicUi.green,
+                        onPressed: enabled ? () => _login(context) : null,
+                        icon: const Icon(Icons.login),
+                      ),
                     ],
                   ),
                 ),

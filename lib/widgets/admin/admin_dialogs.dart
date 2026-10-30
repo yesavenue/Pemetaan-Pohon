@@ -1,3 +1,4 @@
+import 'admin_request_history.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../tree_authority_field.dart';
@@ -566,6 +567,9 @@ Future<bool?> showAdminRequestDetail(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          adminDetail('Status tersimpan', request.status.label),
+          AdminRequestHistory(requestId: request.id),
+          const SizedBox(height: 16),
           const Text(
             'DATA PEMOHON',
             style: TextStyle(fontWeight: FontWeight.w800),

@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_brand.dart';
 
 class LoginScreen extends StatefulWidget {
   final bool standalone;
-  const LoginScreen({super.key, this.standalone = false});
+  final Future<String?> Function(String, String)? signIn;
+  final Future<String?> Function(String)? resetPassword;
+  const LoginScreen({super.key, this.standalone = false, this.signIn, this.resetPassword});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -17,7 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _resetEmailController = TextEditingController();
   final _loginKey = GlobalKey<FormState>();
   final _resetKey = GlobalKey<FormState>();
-  final _authService = AuthService();
+  late final _authService = AuthService();
   bool _busy = false;
   bool _obscure = true;
   bool _forgotPassword = false;
@@ -51,7 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _notice = null;
     });
     try {
-      final error = await _authService.login(
+      final error = await (widget.signIn ?? _authService.login)(
         _emailController.text.trim(),
         _passwordController.text,
       );
@@ -91,7 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _notice = null;
     });
     try {
-      final error = await _authService.sendPasswordResetEmail(email);
+      final error = await (widget.resetPassword ?? _authService.sendPasswordResetEmail)(email);
       if (!mounted) {
         return;
       }
@@ -103,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _forgotPassword = false;
         _emailController.text = email;
         _notice =
-            'Permintaan reset password berhasil diproses. Periksa email dan folder spam Anda.';
+            'Jika email terdaftar, tautan reset akan dikirim. Periksa kotak masuk dan folder spam.';
       });
     } catch (_) {
       if (mounted) {
@@ -143,7 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    _forgotPassword ? 'Lupa Password' : 'Selamat Datang',
+                    _forgotPassword ? 'Lupa Password' : 'Masuk ke akun Anda',
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -156,7 +159,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? 'Masukkan email akun untuk meminta tautan reset password.'
                         : widget.standalone
                         ? 'Masuk dengan akun surveyor yang diberikan admin.'
-                        : 'Masuk dengan akun Surveyor atau Admin Anda.',
+                        : 'Gunakan akun admin atau surveyor. Layanan publik dapat diakses tanpa login.',
                     style: const TextStyle(
                       color: Colors.blueGrey,
                       fontSize: 13,
@@ -230,71 +233,20 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _hero() => SizedBox(
+  Widget _hero() => Container(
     width: double.infinity,
-    child: Stack(
-      children: [
-        Positioned.fill(
-          child: Image.asset(
-            'assets/image/hero_cirebon.png',
-            fit: BoxFit.cover,
-            errorBuilder: (_, error, stack) => Container(color: AppColors.navy),
-          ),
-        ),
-        const Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xEE0B3554),
-                  Color(0x660B3554),
-                  Color(0xDD0B3554),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(24, 48, 24, 28),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.park, size: 52, color: Colors.white),
-                SizedBox(height: 10),
-                Text(
-                  'Pemetaan Pohon\nKota Cirebon',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 23,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 12),
-                Text(
-                  'Bersama menjaga pohon,\nuntuk kota yang lebih hijau',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (!widget.standalone)
-          Positioned(
-            top: 6,
-            right: 6,
-            child: IconButton(
-              tooltip: 'Tutup Login',
-              onPressed: _busy ? null : () => Navigator.pop(context),
-              icon: const Icon(Icons.close, color: Colors.white),
-            ),
-          ),
-      ],
-    ),
+    color: const Color(0xFFF0F6F3),
+    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+    child: Column(children: [
+      if (!widget.standalone) Align(alignment: Alignment.centerRight,
+        child: IconButton(tooltip: 'Tutup Login',
+          onPressed: _busy ? null : () => Navigator.pop(context),
+          icon: const Icon(Icons.close))),
+      const AppBrand(width: 280, height: 82),
+      const SizedBox(height: 16),
+      const Text('Ruang kerja pengelola', textAlign: TextAlign.center,
+        style: TextStyle(color: AppColors.navy, fontWeight: FontWeight.w600)),
+    ]),
   );
 
   Widget _feedback(String text, bool error) => Padding(

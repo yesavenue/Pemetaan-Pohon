@@ -76,59 +76,43 @@ void main() {
     },
   );
   testWidgets(
-    'Navbar transparan → solid → transparan; scroll nested dan peta dikecualikan',
+    'Navbar beranda ikut naik, scroll nested diabaikan, dan peta tetap bernavigasi',
     (tester) async {
       final main = ScrollController();
       final nested = ScrollController();
       addTearDown(main.dispose);
       addTearDown(nested.dispose);
-      Widget page(PublicPage selected) => MaterialApp(
-        home: PublicScaffold(
-          currentPage: selected,
-          onNavigate: (_) {},
-          body: PublicPageScroll(
-            controller: main,
-            children: [
-              SizedBox(
-                height: 160,
-                child: ListView(
-                  controller: nested,
-                  children: const [SizedBox(height: 1000)],
-                ),
-              ),
-              const SizedBox(height: 1800),
-            ],
-          ),
-        ),
-      );
+      Widget page(PublicPage selected) => MaterialApp(home: PublicScaffold(
+        currentPage: selected, onNavigate: (_) {},
+        body: PublicPageScroll(controller: main, children: [
+          SizedBox(height: 160, child: ListView(controller: nested,
+            children: const [SizedBox(height: 1000)])),
+          const SizedBox(height: 1800),
+        ])));
+      double top() => tester.widget<AnimatedSlide>(find.byKey(const ValueKey('public-header-slide'))).offset.dy;
       await tester.pumpWidget(page(PublicPage.beranda));
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('public-header-transparent')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('public-header-transparent')), findsOneWidget);
+      expect(top(), 0);
       nested.jumpTo(120);
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('public-header-transparent')),
-        findsOneWidget,
-      );
+      expect(top(), 0);
       main.jumpTo(120);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('public-header-solid')), findsOneWidget);
-      main.jumpTo(16);
+      expect(top(), closeTo(-.6, .001));
+      main.jumpTo(184);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('public-header-solid')), findsOneWidget);
+      expect(top(), equals(-1));
+      expect(find.byKey(const ValueKey('header-login')).hitTestable(), findsNothing);
       main.jumpTo(0);
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('public-header-transparent')),
-        findsOneWidget,
-      );
+      expect(top(), 0);
+      expect(find.byKey(const ValueKey('header-login')).hitTestable(), findsOneWidget);
       await tester.pumpWidget(page(PublicPage.peta));
       await tester.pumpAndSettle();
       main.jumpTo(120);
       await tester.pumpAndSettle();
+      expect(top(), 0);
       expect(find.byKey(const ValueKey('public-header-solid')), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -163,7 +147,7 @@ void main() {
       scroll.jumpTo(120);
       await tester.pump();
       await tester.pump();
-      expect(find.byKey(const ValueKey('public-header-solid')), findsOneWidget);
+      expect(tester.widget<AnimatedSlide>(find.byKey(const ValueKey('public-header-slide'))).offset.dy, lessThan(0));
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },

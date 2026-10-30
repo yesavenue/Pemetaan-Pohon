@@ -214,6 +214,46 @@ service cloud.firestore {
         && request.resource.data.updatedAt is timestamp;
     }
 
+    // Projection pelacakan: hanya status dan waktu, tanpa data pribadi.
+    function trackingCode(code) { return code.matches('([a-z2-7]{16}|[a-f0-9]{64})'); }
+    function trackingFields(d, source) {
+      return d.keys().hasAll(['requestNumber', 'status', 'createdAt', 'updatedAt'])
+        && d.keys().hasOnly(['requestNumber', 'status', 'createdAt', 'updatedAt'])
+        && d.requestNumber == source.requestNumber && d.status == source.status
+        && d.createdAt == source.createdAt && d.updatedAt == source.updatedAt;
+    }
+    match /pruning_tracking/{code} {
+      allow get: if admin() || (trackingCode(code)
+        && (!exists(/databases/$(database)/documents/pruning_tracking/$(code))
+          || exists(/databases/$(database)/documents/tree_pruning_requests/$(code))));
+      allow list: if false;
+      allow create: if trackingCode(code)
+        && !exists(/databases/$(database)/documents/tree_pruning_requests/$(code))
+        && getAfter(/databases/$(database)/documents/tree_pruning_requests/$(code)).data.createdAt == request.time
+        && trackingFields(request.resource.data, getAfter(/databases/$(database)/documents/tree_pruning_requests/$(code)).data)
+        && request.resource.data.status == 'menunggu';
+      allow update: if admin()
+        && trackingFields(request.resource.data, getAfter(/databases/$(database)/documents/tree_pruning_requests/$(code)).data)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if admin();
+      match /events/{eventId} {
+        allow read: if trackingCode(code)
+          && exists(/databases/$(database)/documents/pruning_tracking/$(code))
+          && exists(/databases/$(database)/documents/tree_pruning_requests/$(code));
+        allow create: if trackingCode(code)
+          && request.resource.data.keys().hasAll(['status', 'at'])
+          && request.resource.data.keys().hasOnly(['status', 'at'])
+          && request.resource.data.at == request.time
+          && request.resource.data.status == getAfter(/databases/$(database)/documents/pruning_tracking/$(code)).data.status
+          && getAfter(/databases/$(database)/documents/pruning_tracking/$(code)).data.updatedAt == request.time
+          && (admin() || (eventId == 'submitted'
+            && !exists(/databases/$(database)/documents/tree_pruning_requests/$(code))
+            && getAfter(/databases/$(database)/documents/tree_pruning_requests/$(code)).data.createdAt == request.time
+            && request.resource.data.status == 'menunggu'));
+        allow update, delete: if false;
+      }
+    }
+
     match /counters/{counterId} {
       // Public membutuhkan get + transaksi set pada dokumen ini saja.
       allow get: if counterId == 'tree_pruning_requests';

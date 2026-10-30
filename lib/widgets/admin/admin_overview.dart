@@ -161,6 +161,17 @@ class _AdminOverviewState extends State<AdminOverview> {
                             setState(() => _surveyors = widget.loadSurveyors()),
                       ),
                     const SizedBox(height: 24),
+                    if (_ready(requests)) _panel('Perkembangan permohonan', [
+                      const Text('Ringkasan seluruh pengajuan warga berdasarkan status terkini.'),
+                      const SizedBox(height: 12),
+                      Wrap(spacing: 8, runSpacing: 8, children: [
+                        for (final status in PruningStatus.values) Chip(
+                          avatar: Icon(status == PruningStatus.selesai ? Icons.check_circle_outline
+                              : status == PruningStatus.ditolak ? Icons.cancel_outlined : Icons.schedule, size: 18),
+                          label: Text('${status.label}: ${requests.data!.where((r) => r.status == status).length}')),
+                      ]),
+                    ]),
+                    const SizedBox(height: 24),
                     _panel('Perlu ditindaklanjuti', [
                       const Text(
                         'Antrean berstatus menunggu, yang paling lama ditampilkan lebih dahulu. Tinjau detail sebelum mengambil keputusan.',

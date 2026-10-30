@@ -314,6 +314,24 @@ void main() {
     },
   );
 
+  testWidgets('GPS gagal saat memperbarui tetap mempertahankan titik sebelumnya', (tester) async {
+    await _largeSurface(tester);
+    var calls = 0;
+    await tester.pumpWidget(MaterialApp(home: _screen((_) async => 'REQ-000001', locate: () async {
+      if (++calls > 1) throw TimeoutException('timeout');
+      return Position(latitude: -6.72, longitude: 108.56, timestamp: DateTime.now(),
+        accuracy: 25, altitude: 0, altitudeAccuracy: 0, heading: 0, headingAccuracy: 0, speed: 0, speedAccuracy: 0);
+    })));
+    await _fillApplicant(tester);
+    await _tap(tester, find.text('Lanjut'));
+    await _tap(tester, find.text('Gunakan Lokasi Saya'));
+    expect(find.textContaining('±25 meter'), findsOneWidget);
+    await _tap(tester, find.text('Perbarui Lokasi'));
+    expect(find.textContaining('-6.72000, 108.56000'), findsOneWidget);
+    expect(find.textContaining('Pencarian lokasi terlalu lama'), findsOneWidget);
+    expect(find.text('Periksa / ubah titik'), findsOneWidget);
+  });
+
   testWidgets('GPS gagal tetap dapat kirim alamat manual dan alasan Lainnya', (
     tester,
   ) async {

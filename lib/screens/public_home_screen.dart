@@ -2,17 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
+
 import '../models/tree_data.dart';
 import '../services/tree_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/public/public_ui.dart';
+import '../widgets/public/public_home_interactions.dart';
 import '../widgets/public/public_motion.dart';
-import '../widgets/civic_design.dart';
 import '../widgets/public/public_visuals.dart';
 import '../screens/public_map_viewer_screen.dart';
 import '../widgets/public/public_footer.dart';
 import '../utils/tree_condition_style.dart';
 import '../widgets/public_navbar.dart';
+import 'public_tracking_screen.dart';
 
 class PublicHomeScreen extends StatefulWidget {
   final Stream<List<TreeData>>? treeStream;
@@ -26,6 +28,15 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
   late Stream<List<TreeData>> _trees;
   final _scroll = ScrollController();
   final _mapSection = GlobalKey();
+  final _guideSection = GlobalKey();
+
+  void _openGuide() {
+    final target = _guideSection.currentContext;
+    if (target != null) {
+      Scrollable.ensureVisible(target,
+      duration: PublicUi.duration(context, 400), curve: Curves.easeInOutCubic, alignment: 0);
+    }
+  }
   TreeCondition? _previewCondition;
 
   void _exploreCondition(TreeCondition? condition) {
@@ -41,8 +52,6 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
       final target =
           (_scroll.offset +
                   box.localToGlobal(Offset.zero).dy -
-                  PublicUi.headerHeight(context) -
-                  MediaQuery.paddingOf(context).top -
                   16)
               .clamp(0.0, _scroll.position.maxScrollExtent)
               .toDouble();
@@ -85,7 +94,17 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
       controller: _scroll,
       underHeader: true,
       children: [
-        const _Hero(),
+        _Hero(controller: _scroll),
+        PublicContainer(child: PublicReveal(child: PublicQuickActions(
+          onMap: () {
+            if (_mapSection.currentContext == null) {
+              navigateToPublicPage(context, PublicPage.peta, PublicPage.beranda);
+            } else {
+              _exploreCondition(null);
+            }
+          }, onGuide: _openGuide,
+          onStatistics: () => navigateToPublicPage(context, PublicPage.statistik, PublicPage.beranda),
+        ))),
         PublicContainer(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -95,8 +114,7 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
                     return _Message(
-                      text:
-                          'Data pohon belum berhasil dimuat. Periksa koneksi lalu coba lagi.',
+                      text: 'Data pohon belum berhasil dimuat. Periksa koneksi lalu coba lagi.',
                       onRetry: () => setState(() => _trees = _stream()),
                     );
                   }
@@ -125,6 +143,11 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      const Text('Pohon yang sudah terpetakan',
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: PublicUi.ink)),
+                      const SizedBox(height: 8),
+                      const Text('Ringkasan data terverifikasi. Pilih kondisi untuk melihat sebarannya.',
+                        style: TextStyle(color: PublicUi.muted)),
                       Padding(
                         padding: const EdgeInsets.only(top: 16),
                         child: _Summary(
@@ -216,28 +239,17 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
                                       ),
                           );
                           return PublicReveal(
-                            child:
-                                box.maxWidth >= 900 &&
-                                    MediaQuery.textScalerOf(
-                                          context,
-                                        ).scale(14) <=
-                                        18.2
-                                ? Row(
-                                    children: [
-                                      Expanded(flex: 35, child: text),
-                                      const SizedBox(width: 32),
-                                      Expanded(flex: 65, child: map),
-                                    ],
-                                  )
-                                : Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      text,
-                                      const SizedBox(height: 24),
-                                      map,
-                                    ],
-                                  ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (box.maxWidth >= 1000 && MediaQuery.textScalerOf(context).scale(14) <= 18.2)
+                                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Expanded(flex: 3, child: text), const SizedBox(width: 32),
+                                    Expanded(flex: 7, child: map),
+                                  ])
+                                else ...[text, const SizedBox(height: 20), map],
+                              ],
+                            ),
                           );
                         },
                       ),
@@ -245,27 +257,11 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
                   );
                 },
               ),
-              const SizedBox(height: 64),
-              const PublicReveal(child: _Guide()),
-              const SizedBox(height: 40),
-              CivicHeading(
-                eyebrow: 'BERPARTISIPASI',
-                title: 'Menemukan pohon yang perlu dirapikan?',
-                description: 'Ajukan permohonan perapihan tanpa perlu login.',
-                action: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: PublicUi.ink,
-                  ),
-                  onPressed: () => navigateToPublicPage(
-                    context,
-                    PublicPage.permohonan,
-                    PublicPage.beranda,
-                  ),
-                  icon: const Icon(Icons.arrow_outward),
-                  label: const Text('Ajukan Permohonan'),
-                ),
-              ),
+              const SizedBox(height: 48),
+              PublicReveal(child: PublicApplicationGuide(key: _guideSection,
+                onApply: () => navigateToPublicPage(context, PublicPage.permohonan, PublicPage.beranda),
+                onTrack: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const PublicTrackingScreen())),
+              )),
               const SizedBox(height: 16),
               Align(
                 alignment: Alignment.centerLeft,
@@ -287,165 +283,94 @@ class _PublicHomeScreenState extends State<PublicHomeScreen> {
   );
 }
 
-class _Hero extends StatelessWidget {
-  const _Hero();
+class _Hero extends StatefulWidget {
+  final ScrollController controller;
+  const _Hero({required this.controller});
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) {
-      final wide =
-          box.maxWidth >= 900 &&
-          MediaQuery.textScalerOf(context).scale(14) <= 18.2;
-      final actions = [
-        FilledButton.icon(
-          onPressed: () => navigateToPublicPage(
-            context,
-            PublicPage.peta,
-            PublicPage.beranda,
-          ),
-          icon: const Icon(Icons.map_outlined),
-          label: const Text('Jelajahi Peta'),
+  State<_Hero> createState() => _HeroState();
+}
+
+class _HeroState extends State<_Hero> {
+  bool _focused = false;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+    final wide = box.maxWidth >= 900 && MediaQuery.textScalerOf(context).scale(14) <= 18.2;
+    final reduced = MediaQuery.of(context).disableAnimations;
+    final minimumHeight = (MediaQuery.sizeOf(context).height * .9).clamp(620.0, 820.0).toDouble();
+    return AnimatedBuilder(animation: widget.controller, builder: (context, _) {
+      final offset = widget.controller.hasClients ? widget.controller.offset : 0.0;
+      // Keep controls readable while a visitor is typing or navigating by keyboard.
+      final progress = _focused ? 0.0 : publicHeroProgress(offset);
+      final hidden = progress >= 1;
+      return Stack(children: [
+        Positioned.fill(child: PublicHeroBackdrop(controller: widget.controller)),
+        Positioned.fill(child: DecoratedBox(key: const ValueKey('hero-clearing-overlay'),
+          decoration: BoxDecoration(gradient: LinearGradient(
+            begin: Alignment.topCenter, end: Alignment.bottomCenter,
+            colors: [Colors.black.withValues(alpha: .48 * (1 - progress)),
+              Colors.black.withValues(alpha: .62 * (1 - progress)),
+              Colors.black.withValues(alpha: .32 * (1 - progress))])))),
+        Container(constraints: BoxConstraints(minHeight: minimumHeight), width: double.infinity,
+          padding: EdgeInsets.fromLTRB(24,
+            PublicUi.headerHeight(context) + MediaQuery.paddingOf(context).top + (wide ? 82 : 48), 24, 64),
+          child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760),
+            child: IgnorePointer(ignoring: hidden,
+              child: ExcludeFocus(excluding: hidden,
+                child: ExcludeSemantics(excluding: hidden,
+                  child: Focus(onFocusChange: (value) { if (mounted) setState(() => _focused = value); },
+                    child: Opacity(key: const ValueKey('hero-content-opacity'), opacity: 1 - progress,
+                      child: Transform.translate(offset: Offset(0, reduced ? 0 : -18 * progress),
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          PublicGlitchTitle(fontSize: wide ? 48 : 32, exitProgress: progress),
+                          const SizedBox(height: 28),
+                          Wrap(alignment: WrapAlignment.center, spacing: 12, runSpacing: 12, children: [
+                            FilledButton.icon(
+                              style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: PublicUi.ink),
+                              onPressed: () => navigateToPublicPage(context, PublicPage.peta, PublicPage.beranda),
+                              icon: const Icon(Icons.map_outlined), label: const Text('Jelajahi Peta')),
+                            FilledButton.icon(
+                              style: FilledButton.styleFrom(backgroundColor: PublicUi.green, foregroundColor: Colors.white),
+                              onPressed: () => navigateToPublicPage(context, PublicPage.permohonan, PublicPage.beranda),
+                              icon: const Icon(Icons.edit_note), label: const Text('Ajukan Permohonan')),
+                          ]),
+                          const SizedBox(height: 22),
+                          const _HeroTrackingField(),
+                        ]))))))))),
         ),
-        OutlinedButton.icon(
-          onPressed: () => navigateToPublicPage(
-            context,
-            PublicPage.permohonan,
-            PublicPage.beranda,
-          ),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.white,
-            side: const BorderSide(color: Colors.white),
-          ),
-          icon: const Icon(Icons.description_outlined),
-          label: const Text('Ajukan Permohonan'),
-        ),
-      ];
-      return ClipRRect(
-        borderRadius: BorderRadius.zero,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: const PublicScrollImage(
-                image: AssetImage('assets/image/hero_cirebon.png'),
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      PublicUi.ink.withValues(alpha: .96),
-                      PublicUi.ink.withValues(alpha: wide ? .32 : .7),
-                    ],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                ),
-              ),
-            ),
-            ConstrainedBox(
-              constraints: BoxConstraints(minHeight: wide ? 560 : 0),
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  wide
-                      ? ((box.maxWidth - 1200) / 2)
-                            .clamp(32.0, double.infinity)
-                            .toDouble()
-                      : 24,
-                  PublicUi.headerHeight(context) +
-                      MediaQuery.paddingOf(context).top +
-                      (wide ? 64 : 36),
-                  wide ? 40 : 24,
-                  wide ? 64 : 36,
-                ),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 650),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'RUANG HIJAU KOTA CIREBON',
-                          style: TextStyle(
-                            color: AppColors.gold,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'Kenali pohonnya.',
-                          style: TextStyle(
-                            fontSize: wide ? 56 : 32,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -1.2,
-                            height: 1.1,
-                            color: Colors.white,
-                          ),
-                        ),
-                        Text(
-                          'Jaga kotanya.',
-                          style: TextStyle(
-                            fontSize: wide ? 56 : 32,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -1.2,
-                            height: 1.1,
-                            color: const Color(0xFFBFE2CE),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'Jelajahi pohon di Kota Cirebon dan ikut merawat ruang hijau di sekitar kita.',
-                          style: TextStyle(
-                            fontSize: 16,
-                            height: 1.55,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-                        if (wide)
-                          Wrap(spacing: 12, runSpacing: 12, children: actions)
-                        else
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              actions[0],
-                              const SizedBox(height: 12),
-                              actions[1],
-                            ],
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: 12,
-              right: 12,
-              child: Material(
-                color: PublicUi.ink.withValues(alpha: .65),
-                borderRadius: BorderRadius.circular(12),
-                child: IconButton(
-                  tooltip: 'Perbesar foto kota',
-                  onPressed: () => showPublicPhoto(
-                    context,
-                    const AssetImage('assets/image/hero_cirebon.png'),
-                    'Ruang hijau Kota Cirebon',
-                  ),
-                  icon: const Icon(
-                    Icons.open_in_full_rounded,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    },
+      ]);
+    });
+  });
+}
+
+class _HeroTrackingField extends StatefulWidget {
+  const _HeroTrackingField();
+  @override
+  State<_HeroTrackingField> createState() => _HeroTrackingFieldState();
+}
+class _HeroTrackingFieldState extends State<_HeroTrackingField> {
+  final _code = TextEditingController();
+  @override
+  void dispose() { _code.dispose(); super.dispose(); }
+  void _open() => Navigator.of(context).push(MaterialPageRoute<void>(
+    builder: (_) => PublicTrackingScreen(initialCode: _code.text.trim().toLowerCase())));
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: 440),
+    child: Material(color: Colors.white, borderRadius: BorderRadius.circular(20),
+      child: Padding(padding: const EdgeInsets.fromLTRB(16, 6, 6, 6),
+        child: Row(children: [
+          Expanded(child: TextField(key: const ValueKey('hero-tracking-code'), controller: _code,
+            autocorrect: false, enableSuggestions: false, textInputAction: TextInputAction.search,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            style: const TextStyle(color: PublicUi.ink),
+            decoration: const InputDecoration(labelText: 'Lacak Permohonan', hintText: 'Masukkan kode akses',
+              border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none,
+              filled: false, isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
+            onSubmitted: (_) => _open())),
+          IconButton(key: const ValueKey('hero-track-request'), tooltip: 'Periksa status permohonan',
+            onPressed: _open, icon: const Icon(Icons.search, color: PublicUi.green)),
+        ])),
+    ),
   );
 }
 
@@ -548,85 +473,6 @@ class _Summary extends StatelessWidget {
       ),
     );
   }
-}
-
-class _Guide extends StatelessWidget {
-  const _Guide();
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      const Text(
-        'Bagaimana mengajukan permohonan?',
-        style: TextStyle(
-          fontSize: 26,
-          fontWeight: FontWeight.w700,
-          height: 1.25,
-        ),
-      ),
-      const SizedBox(height: 24),
-      LayoutBuilder(
-        builder: (context, box) {
-          final items = [
-            for (final entry in [
-              (1, 'Isi permohonan', 'Lengkapi data pemohon dengan benar.'),
-              (
-                2,
-                'Lengkapi lokasi & foto',
-                'Tambahkan alamat, wilayah, foto pohon dan KTP untuk verifikasi admin.',
-              ),
-              (
-                3,
-                'Periksa dan kirim',
-                'Tinjau isian, kirim, lalu simpan nomor permohonan.',
-              ),
-            ])
-              Padding(
-                padding: const EdgeInsets.only(bottom: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: PublicUi.mint,
-                      foregroundColor: PublicUi.green,
-                      child: Text('${entry.$1}'),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      entry.$2,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      entry.$3,
-                      style: const TextStyle(color: PublicUi.muted),
-                    ),
-                  ],
-                ),
-              ),
-          ];
-          return box.maxWidth >= 850 &&
-                  MediaQuery.textScalerOf(context).scale(14) <= 18.2
-              ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (var i = 0; i < items.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 32),
-                      Expanded(child: items[i]),
-                    ],
-                  ],
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: items,
-                );
-        },
-      ),
-    ],
-  );
 }
 
 class _Message extends StatelessWidget {
@@ -798,7 +644,7 @@ class _MapPreviewState extends State<PublicHomeMapPreview> {
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: SizedBox(
-                height: overlay ? 380 : 300,
+                height: overlay ? 420 : 320,
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -813,12 +659,13 @@ class _MapPreviewState extends State<PublicHomeMapPreview> {
                                   setState(() => _selectedId = null),
                               initialCenter: LatLng(-6.7183, 108.5522),
                               initialZoom: 13,
+                              interactionOptions: const InteractionOptions(
+                                flags: InteractiveFlag.all & ~InteractiveFlag.scrollWheelZoom & ~InteractiveFlag.rotate),
                             ),
                             children: [
                               TileLayer(
                                 key: ValueKey(_version),
-                                urlTemplate:
-                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                                 userAgentPackageName: 'com.pemetaanpohon.app',
                                 errorTileCallback: (_, error, stack) {
                                   if (!_tileError) {

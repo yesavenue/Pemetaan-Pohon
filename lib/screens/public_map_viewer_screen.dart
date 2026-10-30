@@ -1,8 +1,14 @@
 import 'dart:async';
+
+import 'package:flutter/services.dart';
+
+import 'public_pruning_request_screen.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:latlong2/latlong.dart';
+
 import '../models/tree_data.dart';
 import '../services/tree_service.dart';
 import '../theme/app_theme.dart';
@@ -68,10 +74,9 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
       _state.setFilters(
         PublicMapFilters(
           kecamatan: widget.initialKecamatan,
-          conditions:
-              widget.initialCondition == null
-                  ? const {}
-                  : {widget.initialCondition!},
+          conditions: widget.initialCondition == null
+              ? const {}
+              : {widget.initialCondition!},
         ),
       );
     }
@@ -206,9 +211,7 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
     } catch (_) {
       if (mounted) {
         setState(
-          () =>
-              _gpsMessage =
-                  'Lokasi belum tersedia. Periksa izin lokasi/GPS lalu coba lagi. Peta tetap dapat digunakan.',
+          () => _gpsMessage = 'Lokasi belum tersedia. Periksa izin lokasi/GPS lalu coba lagi. Peta tetap dapat digunakan.',
         );
       }
     } finally {
@@ -221,14 +224,13 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder:
-          (_) => Theme(
-            data: PublicUi.theme(context),
-            child: _FilterSheet(
-              initialFilters: _state.filters,
-              trees: _state.verifiedTrees,
-            ),
-          ),
+      builder: (_) => Theme(
+        data: PublicUi.theme(context),
+        child: _FilterSheet(
+          initialFilters: _state.filters,
+          trees: _state.verifiedTrees,
+        ),
+      ),
     );
     if (!mounted || result == null) return;
     _state.setFilters(result);
@@ -238,31 +240,29 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder:
-        (sheetContext) => Theme(
-          data: PublicUi.theme(context),
-          child: FractionallySizedBox(
-            heightFactor: .8,
-            child: AnimatedBuilder(
-              animation: _state,
-              builder:
-                  (_, child) => Column(
-                    children: [
-                      _sheetHeader(
-                        sheetContext,
-                        'Daftar pohon (${_state.visibleTrees.length})',
-                      ),
-                      Expanded(
-                        child: _treeList((tree) {
-                          Navigator.pop(sheetContext);
-                          _select(tree);
-                        }),
-                      ),
-                    ],
-                  ),
-            ),
+    builder: (sheetContext) => Theme(
+      data: PublicUi.theme(context),
+      child: FractionallySizedBox(
+        heightFactor: .8,
+        child: AnimatedBuilder(
+          animation: _state,
+          builder: (_, child) => Column(
+            children: [
+              _sheetHeader(
+                sheetContext,
+                'Daftar pohon (${_state.visibleTrees.length})',
+              ),
+              Expanded(
+                child: _treeList((tree) {
+                  Navigator.pop(sheetContext);
+                  _select(tree);
+                }),
+              ),
+            ],
           ),
         ),
+      ),
+    ),
   );
   Widget _sheetHeader(BuildContext context, String title) => Padding(
     padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
@@ -302,39 +302,37 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
     if (desktop) {
       return showDialog<void>(
         context: context,
-        builder:
-            (dialogContext) => Theme(
-              data: theme,
-              child: Dialog(
-                key: const ValueKey('public-map-detail-dialog'),
-                backgroundColor: Colors.white,
-                surfaceTintColor: Colors.transparent,
-                insetPadding: const EdgeInsets.all(24),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: SizedBox(
-                  width: 680,
-                  height: size.height * .82,
-                  child: _detailContent(dialogContext),
-                ),
-              ),
+        builder: (dialogContext) => Theme(
+          data: theme,
+          child: Dialog(
+            key: const ValueKey('public-map-detail-dialog'),
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
             ),
+            clipBehavior: Clip.antiAlias,
+            child: SizedBox(
+              width: 680,
+              height: size.height * .82,
+              child: _detailContent(dialogContext),
+            ),
+          ),
+        ),
       );
     }
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder:
-          (sheetContext) => Theme(
-            data: theme,
-            child: FractionallySizedBox(
-              heightFactor: .85,
-              child: _detailContent(sheetContext),
-            ),
-          ),
+      builder: (sheetContext) => Theme(
+        data: theme,
+        child: FractionallySizedBox(
+          heightFactor: .85,
+          child: _detailContent(sheetContext),
+        ),
+      ),
     );
   }
 
@@ -357,12 +355,11 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
-              child:
-                  tree == null
-                      ? const Text(
-                        'Pohon ini tidak lagi tersedia pada hasil saat ini.',
-                      )
-                      : _fullDetail(tree),
+              child: tree == null
+                  ? const Text(
+                      'Pohon ini tidak lagi tersedia pada hasil saat ini.',
+                    )
+                  : _fullDetail(tree),
             ),
           ),
         ],
@@ -543,11 +540,10 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
               children: [
                 const Text('Sebagian peta belum dimuat.'),
                 TextButton(
-                  onPressed:
-                      () => setState(() {
-                        _tileError = false;
-                        _tileVersion++;
-                      }),
+                  onPressed: () => setState(() {
+                    _tileError = false;
+                    _tileVersion++;
+                  }),
                   child: const Text('Muat ulang'),
                 ),
               ],
@@ -573,21 +569,19 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
           decoration: BoxDecoration(
             color: selected ? PublicUi.mint : Colors.white,
             borderRadius: BorderRadius.circular(16),
-            boxShadow:
-                _hoveredId == tree.id
-                    ? [
-                      BoxShadow(
-                        color: PublicUi.ink.withValues(alpha: .1),
-                        blurRadius: 28,
-                        offset: const Offset(0, 10),
-                      ),
-                    ]
-                    : [],
+            boxShadow: _hoveredId == tree.id
+                ? [
+                    BoxShadow(
+                      color: PublicUi.ink.withValues(alpha: .1),
+                      blurRadius: 28,
+                      offset: const Offset(0, 10),
+                    ),
+                  ]
+                : [],
             border: Border.all(
-              color:
-                  selected || _focusedId == tree.id
-                      ? AppColors.leaf
-                      : PublicUi.border,
+              color: selected || _focusedId == tree.id
+                  ? AppColors.leaf
+                  : PublicUi.border,
               width: selected || _focusedId == tree.id ? 1.5 : 1,
             ),
           ),
@@ -595,12 +589,10 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(16),
             child: InkWell(
-              onHover:
-                  (hover) =>
-                      setState(() => _hoveredId = hover ? tree.id : null),
-              onFocusChange:
-                  (focus) =>
-                      setState(() => _focusedId = focus ? tree.id : null),
+              onHover: (hover) =>
+                  setState(() => _hoveredId = hover ? tree.id : null),
+              onFocusChange: (focus) =>
+                  setState(() => _focusedId = focus ? tree.id : null),
               hoverColor: PublicUi.mint.withValues(alpha: .5),
               key: ValueKey('tree-card-${tree.id}'),
               borderRadius: BorderRadius.circular(16),
@@ -677,30 +669,29 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
                     ),
                     const Divider(height: 1, color: PublicUi.border),
                     Expanded(
-                      child:
-                          _state.visibleTrees.isEmpty
-                              ? SingleChildScrollView(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(20),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.search_off,
-                                        size: 40,
-                                        color: PublicUi.muted,
-                                      ),
-                                      const SizedBox(height: 12),
-                                      const Text('Tidak ada pohon yang sesuai'),
-                                      TextButton(
-                                        onPressed: _resetFilters,
-                                        child: const Text('Reset filter'),
-                                      ),
-                                    ],
-                                  ),
+                      child: _state.visibleTrees.isEmpty
+                          ? SingleChildScrollView(
+                              child: Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.search_off,
+                                      size: 40,
+                                      color: PublicUi.muted,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const Text('Tidak ada pohon yang sesuai'),
+                                    TextButton(
+                                      onPressed: _resetFilters,
+                                      child: const Text('Reset filter'),
+                                    ),
+                                  ],
                                 ),
-                              )
-                              : _treeList(_select),
+                              ),
+                            )
+                          : _treeList(_select),
                     ),
                   ],
                 ),
@@ -717,7 +708,89 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
                 padding: EdgeInsets.zero,
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: box.maxHeight * .46),
-                  child: SingleChildScrollView(child: _header(showList: true)),
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextField(
+                            controller: _search,
+                            onChanged: _state.setQuery,
+                            decoration: InputDecoration(
+                              hintText: 'Cari jenis atau lokasi',
+                              prefixIcon: const Icon(Icons.search),
+                              suffixIcon: IconButton(
+                                tooltip: 'Hapus pencarian',
+                                onPressed: () {
+                                  _search.clear();
+                                  _state.setQuery('');
+                                },
+                                icon: const Icon(Icons.close),
+                              ),
+                            ),
+                          ),
+                          Wrap(
+                            children: [
+                              TextButton.icon(
+                                onPressed: _openFilters,
+                                icon: const Icon(Icons.tune, size: 18),
+                                label: Text(
+                                  'Filter (${_state.filters.activeCount})',
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: _openList,
+                                icon: const Icon(
+                                  Icons.view_list_outlined,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  '${_state.visibleTrees.length} pohon',
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_state.query.isNotEmpty ||
+                              _state.filters.activeCount > 0)
+                            TextButton.icon(
+                              onPressed: _resetFilters,
+                              icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                              label: const Text('Reset filter'),
+                            ),
+                          Semantics(
+                            liveRegion: true,
+                            child: Text(
+                              '${_state.visibleTrees.length} hasil • ${_state.mappedTrees.length} titik peta',
+                              key: const ValueKey('map-result-count'),
+                              style: const TextStyle(fontSize: 12, color: PublicUi.muted),
+                            ),
+                          ),
+                          if (_state.verifiedTrees.isEmpty)
+                            const Text('Belum ada pohon terverifikasi.')
+                          else if (_state.visibleTrees.isEmpty)
+                            const Text('Tidak ada pohon yang sesuai. Coba reset filter.'),
+                          if (_state.visibleTrees.length != _state.mappedTrees.length)
+                            const Text('Pohon tanpa koordinat valid tetap ada di daftar.'),
+                          if (_gpsMessage != null)
+                            Text(
+                              _gpsMessage!,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          if (_tileError)
+                            TextButton(
+                              onPressed: () => setState(() {
+                                _tileError = false;
+                                _tileVersion++;
+                              }),
+                              child: const Text(
+                                'Peta belum lengkap. Coba lagi',
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -731,53 +804,50 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
               shadowColor: PublicUi.ink.withValues(alpha: .15),
               borderRadius: BorderRadius.circular(12),
               child: Flex(
-                direction:
-                    wide || !floatingSearch ? Axis.horizontal : Axis.vertical,
+                direction: wide || !floatingSearch
+                    ? Axis.horizontal
+                    : Axis.vertical,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
                     tooltip: 'Perbesar peta',
-                    onPressed:
-                        !_canMove
-                            ? null
-                            : () => _move(
-                              _state.center,
-                              (_state.zoom + 1).clamp(3, 19).toDouble(),
-                            ),
+                    onPressed: !_canMove
+                        ? null
+                        : () => _move(
+                            _state.center,
+                            (_state.zoom + 1).clamp(3, 19).toDouble(),
+                          ),
                     icon: const Icon(Icons.add),
                   ),
                   const SizedBox(width: 4, height: 4),
                   IconButton(
                     tooltip: 'Perkecil peta',
-                    onPressed:
-                        !_canMove
-                            ? null
-                            : () => _move(
-                              _state.center,
-                              (_state.zoom - 1).clamp(3, 19).toDouble(),
-                            ),
+                    onPressed: !_canMove
+                        ? null
+                        : () => _move(
+                            _state.center,
+                            (_state.zoom - 1).clamp(3, 19).toDouble(),
+                          ),
                     icon: const Icon(Icons.remove),
                   ),
                   const SizedBox(width: 4, height: 4),
                   IconButton(
                     tooltip: 'Lokasi saya',
                     onPressed: !_canMove || _locating ? null : _locate,
-                    icon:
-                        _locating
-                            ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                            : const Icon(Icons.my_location),
+                    icon: _locating
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.my_location),
                   ),
                   const SizedBox(width: 4, height: 4),
                   IconButton(
                     tooltip: 'Reset tampilan',
-                    onPressed:
-                        !_canMove
-                            ? null
-                            : () => _move(PublicMapState.defaultCenter, 13),
+                    onPressed: !_canMove
+                        ? null
+                        : () => _move(PublicMapState.defaultCenter, 13),
                     icon: const Icon(Icons.center_focus_strong),
                   ),
                 ],
@@ -791,125 +861,114 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
             width: wide ? 380 : null,
             child: AnimatedSwitcher(
               duration: Duration(
-                milliseconds:
-                    MediaQuery.of(context).disableAnimations ? 0 : 220,
+                milliseconds: MediaQuery.of(context).disableAnimations
+                    ? 0
+                    : 220,
               ),
-              transitionBuilder:
-                  (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, .08),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  ),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, .08),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              ),
               // Only the new card participates in hit testing during a selection change.
-              layoutBuilder:
-                  (currentChild, previousChildren) =>
-                      currentChild ?? const SizedBox.shrink(),
-              child:
-                  selected == null
-                      ? const SizedBox.shrink(key: ValueKey('no-selection'))
-                      : AnimatedContainer(
-                        key: ValueKey('selected-${selected.id}'),
-                        duration: PublicUi.duration(context, 220),
-                        curve: Curves.easeOutCubic,
-                        constraints: BoxConstraints(
-                          maxHeight:
-                              wide
-                                  ? (box.maxHeight - 112)
-                                      .clamp(0, 460)
-                                      .toDouble()
-                                  : (box.maxHeight *
-                                          (_detailExpanded ? .88 : .46))
-                                      .clamp(0, box.maxHeight - 40)
-                                      .toDouble(),
-                        ),
-                        child: PublicPanel(
-                          floating: true,
-                          padding: EdgeInsets.zero,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        !wide && _detailExpanded
-                                            ? 'Detail pohon'
-                                            : selected.species,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w700,
-                                        ),
+              layoutBuilder: (currentChild, previousChildren) =>
+                  currentChild ?? const SizedBox.shrink(),
+              child: selected == null
+                  ? const SizedBox.shrink(key: ValueKey('no-selection'))
+                  : AnimatedContainer(
+                      key: ValueKey('selected-${selected.id}'),
+                      duration: PublicUi.duration(context, 220),
+                      curve: Curves.easeOutCubic,
+                      constraints: BoxConstraints(
+                        maxHeight: wide
+                            ? (box.maxHeight - 112).clamp(0, 460).toDouble()
+                            : (box.maxHeight * (_detailExpanded ? .88 : .46))
+                                  .clamp(0, box.maxHeight - 40)
+                                  .toDouble(),
+                      ),
+                      child: PublicPanel(
+                        floating: true,
+                        padding: EdgeInsets.zero,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 4, 0),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      !wide && _detailExpanded
+                                          ? 'Detail pohon'
+                                          : selected.species,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    IconButton(
-                                      tooltip: 'Tutup kartu pohon',
-                                      onPressed: () {
-                                        setState(() => _detailExpanded = false);
-                                        _state.clearSelection();
-                                      },
-                                      icon: const Icon(Icons.close_rounded),
-                                    ),
-                                  ],
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Tutup kartu pohon',
+                                    onPressed: () {
+                                      setState(() => _detailExpanded = false);
+                                      _state.clearSelection();
+                                    },
+                                    icon: const Icon(Icons.close_rounded),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Flexible(
+                              child: SingleChildScrollView(
+                                key: ValueKey(
+                                  'selected-body-${selected.id}-${!wide && _detailExpanded}',
+                                ),
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  16,
+                                  16,
+                                  0,
+                                ),
+                                child: !wide && _detailExpanded
+                                    ? _fullDetail(selected)
+                                    : _selectedCard(selected),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: FilledButton.icon(
+                                key: const ValueKey('public-map-detail-action'),
+                                onPressed: wide
+                                    ? _openDetail
+                                    : () => setState(
+                                        () =>
+                                            _detailExpanded = !_detailExpanded,
+                                      ),
+                                icon: Icon(
+                                  !wide && _detailExpanded
+                                      ? Icons.expand_more
+                                      : Icons.expand_less,
+                                  size: 20,
+                                ),
+                                label: Text(
+                                  !wide && _detailExpanded
+                                      ? 'Ringkas detail'
+                                      : 'Lihat detail',
                                 ),
                               ),
-                              Flexible(
-                                child: SingleChildScrollView(
-                                  key: ValueKey(
-                                    'selected-body-${selected.id}-${!wide && _detailExpanded}',
-                                  ),
-                                  padding: const EdgeInsets.fromLTRB(
-                                    16,
-                                    16,
-                                    16,
-                                    0,
-                                  ),
-                                  child:
-                                      !wide && _detailExpanded
-                                          ? _fullDetail(selected)
-                                          : _selectedCard(selected),
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: FilledButton.icon(
-                                  key: const ValueKey(
-                                    'public-map-detail-action',
-                                  ),
-                                  onPressed:
-                                      wide
-                                          ? _openDetail
-                                          : () => setState(
-                                            () =>
-                                                _detailExpanded =
-                                                    !_detailExpanded,
-                                          ),
-                                  icon: Icon(
-                                    !wide && _detailExpanded
-                                        ? Icons.expand_more
-                                        : Icons.expand_less,
-                                    size: 20,
-                                  ),
-                                  label: Text(
-                                    !wide && _detailExpanded
-                                        ? 'Ringkas detail'
-                                        : 'Lihat detail',
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
+                    ),
             ),
           ),
         ],
@@ -924,10 +983,9 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
       initialZoom: _state.zoom,
       minZoom: 3,
       maxZoom: 19,
-      onMapReady:
-          () => WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) setState(() => _ready = true);
-          }),
+      onMapReady: () => WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _ready = true);
+      }),
       onPositionChanged: (camera, hasGesture) {
         if (hasGesture) _motion.stop();
         _state.center = camera.center;
@@ -951,30 +1009,28 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
         options: MarkerClusterLayerOptions(
           maxClusterRadius: 50,
           size: const Size(48, 48),
-          markers:
-              _state.mappedTrees
-                  .map(
-                    (tree) => Marker(
-                      key: ValueKey(tree.id),
-                      point: LatLng(tree.latitude, tree.longitude),
-                      width: 48,
-                      height: 48,
-                      child: PublicTreePin(
-                        tree: tree,
-                        selected: tree.id == _state.selectedId,
-                        onTap: () => _select(tree),
-                      ),
-                    ),
-                  )
-                  .toList(),
-          builder:
-              (_, markers) => CircleAvatar(
-                backgroundColor: AppColors.navy,
-                child: Text(
-                  '${markers.length}',
-                  style: const TextStyle(color: Colors.white),
+          markers: _state.mappedTrees
+              .map(
+                (tree) => Marker(
+                  key: ValueKey(tree.id),
+                  point: LatLng(tree.latitude, tree.longitude),
+                  width: 48,
+                  height: 48,
+                  child: PublicTreePin(
+                    tree: tree,
+                    selected: tree.id == _state.selectedId,
+                    onTap: () => _select(tree),
+                  ),
                 ),
-              ),
+              )
+              .toList(),
+          builder: (_, markers) => CircleAvatar(
+            backgroundColor: AppColors.navy,
+            child: Text(
+              '${markers.length}',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
         ),
       ),
       RichAttributionWidget(
@@ -1033,6 +1089,15 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
       const SizedBox(height: 8),
       _condition(tree),
       const SizedBox(height: 12),
+      Text(
+        'ID pohon: ${tree.id}',
+        style: const TextStyle(color: PublicUi.muted, fontSize: 12),
+      ),
+      Text(
+        'Didata ${tree.timestamp.day}/${tree.timestamp.month}/${tree.timestamp.year}',
+        style: const TextStyle(color: PublicUi.muted, fontSize: 13),
+      ),
+      const SizedBox(height: 16),
       Text('Jalan: ${tree.namaJalan.isEmpty ? 'Belum diisi' : tree.namaJalan}'),
       Text(
         'Kelurahan: ${tree.kelurahan.isEmpty ? 'Belum diisi' : tree.kelurahan}',
@@ -1044,6 +1109,47 @@ class _PublicMapViewerScreenState extends State<PublicMapViewerScreen>
         Text('Ranah kewenangan: ${tree.ranahKewenangan}'),
       if (tree.keteranganKondisi.isNotEmpty)
         Text('Keterangan: ${tree.keteranganKondisi}'),
+      const SizedBox(height: 12),
+      FilledButton.icon(
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => PublicPruningRequestScreen(initialTree: tree),
+          ),
+        ),
+        icon: const Icon(Icons.content_cut_outlined),
+        label: const Text('Ajukan perapihan pohon ini'),
+      ),
+      const SizedBox(height: 8),
+      if (hasPublicMapCoordinates(tree))
+        OutlinedButton.icon(
+          onPressed: () async {
+            try {
+              await Clipboard.setData(
+                ClipboardData(
+                  text:
+                      'https://www.openstreetmap.org/?mlat=${tree.latitude}&mlon=${tree.longitude}#map=18/${tree.latitude}/${tree.longitude}',
+                ),
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Tautan lokasi disalin.')),
+                );
+              }
+            } catch (_) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Tautan belum tersalin. Silakan salin koordinat di bawah.',
+                    ),
+                  ),
+                );
+              }
+            }
+          },
+          icon: const Icon(Icons.share_outlined),
+          label: const Text('Salin tautan lokasi'),
+        ),
       const SizedBox(height: 12),
       if (hasPublicMapCoordinates(tree))
         SelectableText('Koordinat: ${tree.latitude}, ${tree.longitude}')
@@ -1093,12 +1199,10 @@ class _FilterSheetState extends State<_FilterSheet> {
       expand: false,
       builder: (context, scrollController) {
         final trees = widget.trees;
-        final speciesOptions =
-            {
-                ...trees.map((t) => t.species),
-                if (_draft.species != 'Semua') _draft.species,
-              }.where((s) => s != 'Semua').toList()
-              ..sort();
+        final speciesOptions = {
+          ...trees.map((t) => t.species),
+          if (_draft.species != 'Semua') _draft.species,
+        }.where((s) => s != 'Semua').toList()..sort();
         final kelurahanOptions = kelurahanFor(_draft.kecamatan);
 
         return ListView(
@@ -1140,14 +1244,13 @@ class _FilterSheetState extends State<_FilterSheet> {
                   (k) => DropdownMenuItem(value: k, child: Text(k)),
                 ),
               ],
-              onChanged:
-                  (v) => setState(() {
-                    _draft = _draft.copyWith(
-                      kecamatan: v,
-                      clearKecamatan: v == null,
-                      clearKelurahan: true,
-                    );
-                  }),
+              onChanged: (v) => setState(() {
+                _draft = _draft.copyWith(
+                  kecamatan: v,
+                  clearKecamatan: v == null,
+                  clearKelurahan: true,
+                );
+              }),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
@@ -1166,15 +1269,14 @@ class _FilterSheetState extends State<_FilterSheet> {
                   (k) => DropdownMenuItem(value: k, child: Text(k)),
                 ),
               ],
-              onChanged:
-                  _draft.kecamatan == null
-                      ? null
-                      : (v) => setState(() {
-                        _draft = _draft.copyWith(
-                          kelurahan: v,
-                          clearKelurahan: v == null,
-                        );
-                      }),
+              onChanged: _draft.kecamatan == null
+                  ? null
+                  : (v) => setState(() {
+                      _draft = _draft.copyWith(
+                        kelurahan: v,
+                        clearKelurahan: v == null,
+                      );
+                    }),
             ),
             const SizedBox(height: 20),
             _sectionLabel('Jenis Pohon'),
@@ -1183,14 +1285,13 @@ class _FilterSheetState extends State<_FilterSheet> {
               value: _draft.species,
               isExpanded: true,
               decoration: const InputDecoration(isDense: true),
-              items:
-                  ['Semua', ...speciesOptions]
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                      .toList(),
-              onChanged:
-                  (v) => setState(
-                    () => _draft = _draft.copyWith(species: v ?? 'Semua'),
-                  ),
+              items: [
+                'Semua',
+                ...speciesOptions,
+              ].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+              onChanged: (v) => setState(
+                () => _draft = _draft.copyWith(species: v ?? 'Semua'),
+              ),
             ),
             const SizedBox(height: 20),
             _sectionLabel('Kondisi'),
@@ -1202,16 +1303,15 @@ class _FilterSheetState extends State<_FilterSheet> {
                 title: Text(c.label),
                 activeColor: treeConditionColor(c),
                 value: _draft.conditions.contains(c),
-                onChanged:
-                    (checked) => setState(() {
-                      final updated = {..._draft.conditions};
-                      if (checked == true) {
-                        updated.add(c);
-                      } else {
-                        updated.remove(c);
-                      }
-                      _draft = _draft.copyWith(conditions: updated);
-                    }),
+                onChanged: (checked) => setState(() {
+                  final updated = {..._draft.conditions};
+                  if (checked == true) {
+                    updated.add(c);
+                  } else {
+                    updated.remove(c);
+                  }
+                  _draft = _draft.copyWith(conditions: updated);
+                }),
               );
             }),
             const SizedBox(height: 12),
@@ -1222,10 +1322,8 @@ class _FilterSheetState extends State<_FilterSheet> {
               title: const Text('Terbaru'),
               value: true,
               groupValue: _draft.newestFirst,
-              onChanged:
-                  (v) => setState(
-                    () => _draft = _draft.copyWith(newestFirst: true),
-                  ),
+              onChanged: (v) =>
+                  setState(() => _draft = _draft.copyWith(newestFirst: true)),
             ),
             RadioListTile<bool>(
               dense: true,
@@ -1233,18 +1331,16 @@ class _FilterSheetState extends State<_FilterSheet> {
               title: const Text('Terlama'),
               value: false,
               groupValue: _draft.newestFirst,
-              onChanged:
-                  (v) => setState(
-                    () => _draft = _draft.copyWith(newestFirst: false),
-                  ),
+              onChanged: (v) =>
+                  setState(() => _draft = _draft.copyWith(newestFirst: false)),
             ),
             const SizedBox(height: 24),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed:
-                        () => setState(() => _draft = const PublicMapFilters()),
+                    onPressed: () =>
+                        setState(() => _draft = const PublicMapFilters()),
                     child: const Text('Reset'),
                   ),
                 ),

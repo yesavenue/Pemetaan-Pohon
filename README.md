@@ -1,83 +1,88 @@
 # Pemetaan Pohon Kota Cirebon
 
-Pemetaan Pohon Kota Cirebon membantu mengatasi sulitnya mengetahui lokasi, jenis, dan kondisi pohon yang tercatat di wilayah kota. Melalui peta dan pendataan terpusat, warga dapat melihat informasi pohon terverifikasi, sementara petugas dan admin dapat mencatat, meninjau, serta mengelola data untuk mendukung pemeliharaan ruang hijau dan perhatian terhadap pohon yang rawan tumbang.
+Aplikasi ini membantu mendata pohon dan memantau kondisinya dalam satu sistem, sehingga informasi lokasi dan kondisi pohon dapat ditinjau oleh petugas serta disajikan kepada publik. Warga juga dapat mengajukan perapihan pohon dan melacak perkembangannya, sementara data yang belum diverifikasi tidak ditampilkan sebagai data publik.
 
 ## Gambaran Umum
 
-Aplikasi Flutter ini menyediakan antarmuka publik berbasis web dan alur kerja untuk petugas survei serta admin. Pengunjung dapat menjelajahi peta dan statistik tanpa login, atau mengirim permohonan perapihan pohon. Surveyor masuk dengan akun aktif untuk mencatat pohon dan mengelola catatan miliknya. Admin mengawasi pendataan, meninjau pengajuan, mengelola surveyor, dan menangani permohonan warga.
+Aplikasi menyediakan layanan publik berbasis web dan ruang kerja untuk surveyor serta admin. Alur pendataan dimulai dari surveyor yang mencatat lokasi, jenis, kondisi, dan foto pohon. Admin meninjau catatan tersebut; hanya data berstatus terverifikasi yang dipublikasikan. Warga dapat menjelajahi peta dan statistik pohon, lalu mengirim permohonan perapihan secara terpisah dari proses pendataan pohon.
 
-Data pohon yang dicatat surveyor berstatus menunggu verifikasi. Admin dapat memeriksa dan mengubah statusnya; hanya pohon terverifikasi yang ditampilkan sebagai data publik. Status kondisi pohon merupakan catatan pendataan, bukan hasil prediksi otomatis.
+Aplikasi menggunakan Firebase Authentication untuk sesi akun dan Cloud Firestore untuk data. Mode awal ditentukan oleh platform: build web membuka halaman publik, sedangkan build native membuka alur aplikasi surveyor. Mode surveyor juga dapat dipilih saat menjalankan versi web untuk keperluan uji coba.
 
 ## Fitur Utama
 
 ### Publik
 
-- **Beranda dan peta pohon:** beranda menampilkan ringkasan serta pratinjau peta. Peta lengkap menyediakan pencarian dan filter wilayah, jenis, kondisi, serta urutan waktu. Pengunjung dapat memilih titik atau melihat daftar pohon dan detail yang tersedia. Pengelompokan penanda membantu membaca sebaran saat titik berdekatan.
-- **Detail dan kondisi pohon:** informasi yang ditampilkan mencakup jenis, kondisi, lokasi, dan keterangan yang tersedia. Peta dan statistik publik menggunakan data terverifikasi, sehingga catatan yang masih menunggu atau ditolak tidak tercampur dengan inventaris publik.
-- **Statistik:** ringkasan dan grafik menyajikan jumlah pohon menurut kondisi, jenis, dan kecamatan. Pengunjung dapat memfilter wilayah serta beralih ke tampilan tabel.
-- **Permohonan perapihan pohon:** formulir bertahap mengumpulkan informasi pemohon, lokasi dan alasan permohonan, serta foto pohon dan KTP. Nomor permohonan diberikan setelah pengajuan. Data permohonan memuat informasi pribadi; gunakan dengan kehati-hatian dan hindari mengirim data nyata saat pengujian.
+- **Beranda dan peta pohon:** beranda menampilkan ringkasan pohon terverifikasi serta pratinjau peta. Peta lengkap menyediakan pencarian dan filter berdasarkan kecamatan, kelurahan, jenis, dan kondisi, serta pengurutan data. Marker menggunakan pengelompokan agar sebaran pohon lebih mudah dijelajahi. Daftar tetap dapat menampilkan catatan yang koordinatnya belum valid.
+- **Detail pohon:** warga dapat melihat informasi yang dipublikasikan, seperti jenis, kondisi, alamat, kecamatan, kelurahan, dan koordinat. Dari detail, warga dapat membuka formulir permohonan untuk pohon tersebut atau menyalin tautan lokasi.
+- **Statistik:** ringkasan dan grafik menyajikan jumlah pohon berdasarkan kondisi, jenis, dan kecamatan; statistik dapat difokuskan ke kecamatan tertentu.
+- **Permohonan perapihan dan pelacakan:** formulir mengumpulkan data pemohon, keterangan pohon, lokasi, serta foto pohon dan identitas. Setelah pengajuan, aplikasi memberikan nomor permohonan dan kode akses untuk melihat status serta riwayat pembaruan. Kode akses perlu dijaga karena digunakan untuk membuka informasi pelacakan.
+- **Informasi layanan:** halaman Tentang memuat penjelasan dan informasi layanan publik.
 
 ### Surveyor
 
-- **Pendataan pohon:** surveyor mencatat jenis, kondisi, wilayah, alamat, ranah kewenangan, koordinat, keterangan kondisi, dan foto. Lokasi dapat dipilih lewat peta atau perangkat. Catatan baru dikirim untuk ditinjau admin.
-- **Beranda, peta, dan detail:** dashboard merangkum catatan milik surveyor, termasuk input hari ini dan pohon rawan tumbang. Daftar serta peta membantu mencari catatan; detail menyediakan akses untuk mengubah atau menghapus data milik sendiri.
-- **Tindak lanjut hasil tinjauan:** surveyor dapat melihat pohon yang ditolak beserta alasan admin, menandai pemberitahuan telah dibaca, lalu memperbaiki dan mengirim ulang catatan.
-- **Profil dan keamanan akun:** tersedia pengelolaan profil, perubahan kata sandi atau email, dan logout. Akun yang diwajibkan mengganti kata sandi akan diarahkan ke langkah tersebut setelah masuk.
+- **Pendataan pohon:** surveyor dapat membuat atau memperbarui catatan yang mencakup lokasi, jenis pohon, kondisi, keterangan, ranah kewenangan, dan foto. Lokasi dapat ditentukan pada peta; aplikasi juga memeriksa kedekatan dengan data pohon lain untuk membantu menghindari pencatatan ganda.
+- **Peta dan daftar inventaris:** surveyor dapat mencari serta memfilter pohonnya berdasarkan kondisi dan informasi lokasi, lalu membuka detail catatan.
+- **Tinjauan admin:** catatan memiliki status menunggu verifikasi, terverifikasi, atau perlu perbaikan. Catatan yang ditolak dapat disertai alasan; surveyor dapat membaca umpan balik, memperbaiki data, dan mengirimkannya kembali untuk ditinjau.
+- **Beranda dan profil:** beranda merangkum data milik surveyor, termasuk jumlah pohon dan pohon yang rawan tumbang. Profil menyediakan pengelolaan informasi akun.
 
 ### Admin
 
-- **Ringkasan dan verifikasi:** dashboard merangkum data pohon, surveyor, dan permohonan. Admin dapat menambah atau mengubah catatan, meninjau pengajuan, memverifikasi, menolak dengan alasan, mengubah status, atau menghapus data. Entri pohon manual admin langsung berstatus terverifikasi.
-- **Pengelolaan surveyor:** admin dapat membuat akun surveyor, memperbarui nama, mengaktifkan atau menonaktifkan akun, mengirim instruksi reset kata sandi, dan menghapus profil.
-- **Permohonan warga:** admin dapat meninjau detail dan foto, memperbarui status permohonan, mengunduh foto, serta menghasilkan dokumen surat permohonan.
-- **Ekspor dan sinkronisasi peta:** data pohon dapat dipilih dan diekspor sebagai Excel. Tersedia pula tindakan untuk menyelaraskan proyeksi data pohon terverifikasi untuk pembacaan publik.
-- **Data contoh:** admin memiliki tindakan untuk membuat atau menghapus 30 catatan simulasi. Lokasi dan ilustrasinya adalah data contoh, bukan pendataan lapangan; jangan memperlakukannya sebagai data nyata.
+- **Ringkasan dan pengelolaan surveyor:** admin dapat melihat ringkasan, menambahkan akun surveyor, memperbarui nama, mengubah status aktif, dan menghapus profil.
+- **Verifikasi data pohon:** admin meninjau catatan, menyetujui atau menolak dengan alasan, serta mengelola data pohon. Data terverifikasi dipublikasikan; catatan yang tidak terverifikasi tidak masuk ke tampilan publik.
+- **Ekspor laporan:** admin dapat memilih data pohon untuk diekspor sebagai Excel. Data permohonan dapat dibuat menjadi dokumen Word.
+- **Pengelolaan permohonan:** admin meninjau pengajuan, memperbarui status penanganan, memberi alasan jika menolak, dan melihat riwayat perubahan. Pengajuan tidak otomatis berarti pekerjaan telah disetujui.
+- **Data contoh:** tersedia tindakan khusus untuk menambahkan atau menghapus data contoh yang ditandai aplikasi. Data tersebut adalah data demonstrasi, bukan hasil survei lapangan.
 
 ## Peran Pengguna
 
 | Peran | Akses dan tanggung jawab |
 |---|---|
-| Pengunjung publik | Tanpa login; melihat peta, detail, statistik, informasi aplikasi, dan mengajukan permohonan perapihan. |
-| Surveyor | Akun aktif diperlukan; mendata dan mengelola pohon miliknya serta menindaklanjuti hasil tinjauan. |
-| Admin | Akun aktif diperlukan; mengelola surveyor, pohon, verifikasi, permohonan, dan ekspor. |
+| Publik | Mengakses halaman web tanpa masuk akun; melihat pohon terverifikasi, statistik, dan informasi layanan; mengajukan serta melacak permohonan dengan kode akses. |
+| Surveyor | Masuk dengan akun surveyor aktif; mendata dan mengelola catatan pohon miliknya, serta menindaklanjuti hasil verifikasi admin. |
+| Admin | Masuk melalui web dengan akun admin aktif; mengelola surveyor, meninjau data pohon, menangani permohonan, dan mengekspor laporan. |
+
+Aplikasi memeriksa profil dan status aktif akun. Akun yang diwajibkan mengganti kata sandi diarahkan ke layar penggantian sebelum masuk ke dashboard. Aplikasi native dibatasi untuk akun surveyor; akun admin digunakan melalui web.
 
 ## Teknologi
 
-| Teknologi atau paket | Penggunaan |
-|---|---|
-| Flutter dan Dart | Antarmuka lintas platform; batas SDK Dart pada manifest adalah `^3.7.2`. |
-| `firebase_core`, `firebase_auth`, `cloud_firestore` | Inisialisasi Firebase, autentikasi, dan penyimpanan serta aliran data Firestore. |
-| `flutter_map`, `latlong2`, `flutter_map_marker_cluster` | Peta, koordinat, dan pengelompokan penanda. Peta menggunakan tile OpenStreetMap. |
-| `fl_chart` | Grafik statistik. |
-| `image_picker`, `image` | Pemilihan dan pengolahan gambar. |
-| `geolocator` | Akses lokasi perangkat. |
-| `excel`, `archive`, `xml` | Ekspor Excel serta penyusunan dokumen arsip. |
-| `web`, `url_launcher` | Integrasi fitur unduhan web dan pembukaan tautan. |
-| `crypto`, `google_fonts`, `package_info_plus`, `cupertino_icons` | Utilitas pendukung, font, informasi aplikasi, dan ikon. |
+Versi di bawah mengikuti deklarasi pada `pubspec.yaml`; tanda `^` dipertahankan sebagaimana tercantum di sana.
 
-Versi paket mengikuti batas versi yang dicantumkan di `pubspec.yaml`; paket pengujian dan lint mencakup `flutter_test` serta `flutter_lints`.
+| Teknologi atau paket | Versi yang dideklarasikan | Penggunaan |
+|---|---:|---|
+| Flutter dan Dart | Dart `^3.7.2` | Antarmuka dan logika aplikasi; Flutter menggunakan SDK yang dipasang di lingkungan pengembang. |
+| `firebase_core`, `firebase_auth`, `cloud_firestore` | `^3.12.1`, `^5.5.1`, `^5.6.2` | Inisialisasi Firebase, autentikasi, dan penyimpanan serta aliran data Firestore. |
+| `flutter_map`, `latlong2`, `flutter_map_marker_cluster` | `^8.3.2`, `0.9.1`, `^8.2.2` | Peta, koordinat, dan pengelompokan marker; tile peta menggunakan OpenStreetMap. |
+| `fl_chart` | `0.69.2` | Grafik statistik publik. |
+| `image_picker`, `image`, `geolocator` | `^1.2.1`, `4.2.0`, `^14.0.2` | Pemilihan dan pemrosesan foto serta akses lokasi perangkat. |
+| `excel`, `archive`, `xml` | `^4.0.6`, `^3.6.1`, `^6.5.0` | Pembuatan ekspor Excel dan dokumen permohonan. |
+| `web`, `url_launcher` | `^1.1.1`, `^6.3.2` | Integrasi fungsi web dan pembukaan tautan. |
+| Paket pendukung lain | `crypto ^3.0.6`, `google_fonts ^6.3.2`, `package_info_plus 8.3.1`, `cupertino_icons ^1.0.8` | Fungsi kriptografi, tipografi, informasi paket, dan ikon. |
 
 ## Struktur Proyek
 
 ```text
 lib/
   main.dart
-  models/          Model pengguna, pohon, dan permohonan
-  screens/         Layar publik, autentikasi, admin, dan surveyor
-  services/        Akses autentikasi dan Firebase
-  view_models/     Agregasi serta state untuk tampilan
-  widgets/         Komponen UI publik, admin, dan surveyor
-  utils/           Peta, lokasi, ekspor, gambar, dan utilitas
+  models/          Model akun, data pohon, dan permohonan
+  screens/         Layar publik, admin, autentikasi, dan input pohon
+    surveyor/      Beranda, peta, daftar, dan detail surveyor
+  services/        Akses autentikasi dan operasi data Firebase
   theme/           Tema aplikasi
-assets/image/      Aset logo dan hero
-test/              Pengujian widget dan logika
-android/ ios/ web/ linux/ macos/ windows/
-firestore.rules    Aturan akses Firestore
-pubspec.yaml       SDK, dependensi, dan aset
+  utils/           Pemetaan wilayah, lokasi, ekspor, dan fungsi pendukung
+  view_models/     Pengolahan data untuk ringkasan, peta, dan statistik
+  widgets/         Komponen bersama serta komponen publik/admin/surveyor
+test/              Pengujian unit dan widget
+assets/             Aset visual aplikasi
+android/, ios/,
+linux/, macos/,
+web/, windows/      Berkas target platform Flutter
+firestore.rules     Aturan akses Cloud Firestore
+pubspec.yaml        SDK dan dependensi proyek
 ```
 
 ## Persiapan dan Instalasi
 
-Prasyarat: Flutter yang mendukung batas Dart pada `pubspec.yaml`, Git, dan proyek Firebase yang dapat digunakan. Untuk web, siapkan Chrome; untuk menjalankan di perangkat, siapkan perangkat atau emulator yang dikenali Flutter.
+**Prasyarat:** Flutter SDK yang mendukung batas Dart `^3.7.2`, Git, dan browser Chrome untuk menjalankan web. Siapkan pula proyek Firebase yang akan digunakan oleh aplikasi.
 
 ```bash
 git clone https://github.com/yesavenue/Pemetaan-Pohon.git
@@ -85,28 +90,30 @@ cd Pemetaan-Pohon
 flutter pub get
 ```
 
-Aplikasi menginisialisasi Firebase menggunakan `DefaultFirebaseOptions.currentPlatform`. Siapkan konfigurasi platform untuk proyek Firebase yang diotorisasi melalui alur resmi FlutterFire, lalu aktifkan Firebase Authentication dan Cloud Firestore. Pastikan aturan Firestore proyek ditinjau dan dipasang sesuai kebutuhan aplikasi. Jangan menaruh kredensial atau rahasia di README, membagikannya, atau memasukkannya ke repositori publik.
+Konfigurasikan Firebase untuk target platform yang akan dijalankan menggunakan perangkat dan alur konfigurasi Firebase/FlutterFire resmi. Konfigurasi aplikasi harus dibuat secara lokal untuk proyek Firebase milik Anda. Aktifkan metode masuk email dan kata sandi serta siapkan Cloud Firestore dengan aturan akses yang sesuai sebelum menguji operasi data. Jangan menaruh kredensial, kunci privat, atau data sensitif di repositori maupun membagikannya melalui tangkapan layar atau log.
 
 ## Menjalankan Aplikasi
 
-Pada web, mode bawaan adalah aplikasi publik:
+Jalankan layanan publik di Chrome:
 
 ```bash
 flutter run -d chrome
 ```
 
-Mode surveyor dapat dijalankan di web dengan akun surveyor yang sesuai:
+Untuk melihat mode surveyor di Chrome:
 
 ```bash
 flutter run -d chrome --dart-define=SURVEYOR_APP=true
 ```
 
-Pada platform non-web, mode bawaan adalah aplikasi surveyor dan memerlukan login:
+Untuk menjalankan pada perangkat atau emulator yang terdeteksi Flutter:
 
 ```bash
 flutter devices
-flutter run -d <device-id>
+flutter run -d <device_id>
 ```
+
+Build native secara default menggunakan mode surveyor. Akun admin harus masuk melalui web, sedangkan dashboard berfitur masuk memerlukan akun yang sudah disiapkan di Firebase.
 
 ## Pengujian
 
@@ -117,4 +124,4 @@ flutter analyze
 flutter test
 ```
 
-Pengujian yang tersedia mencakup widget dan navigasi publik, peta dan pencarian, statistik, formulir permohonan, tampilan admin, penelusuran pohon surveyor, model data, ekspor Excel, pengelolaan sesi, serta utilitas seperti pengelompokan titik dan pemrosesan foto. Perintah tersebut menjalankan pemeriksaan; dokumentasi ini tidak menyatakan hasil tes tertentu atau kesiapan produksi.
+Pengujian yang tersedia mencakup model dan status pohon, pemisahan data publik dan privat, filter serta pencarian peta, statistik, alur permohonan dan pelacakan, pengelolaan admin, ekspor Excel, serta widget dan interaksi publik maupun surveyor. Perintah di atas menjalankan pemeriksaan; dokumentasi ini tidak menyatakan hasil lulus atau kesiapan produksi.

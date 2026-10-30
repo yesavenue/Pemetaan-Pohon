@@ -23,23 +23,13 @@ class PublicFooter extends StatelessWidget {
               final identity = Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Image.asset(
-                        appLogoAsset,
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.medium,
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          appSystemName,
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ],
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Image.asset(appLogoAsset, width: 260, height: 90,
+                      fit: BoxFit.contain, alignment: Alignment.centerLeft,
+                      semanticLabel: appSystemName,
+                      errorBuilder: (_, error, stack) => const Text(appSystemName,
+                        style: TextStyle(fontWeight: FontWeight.w700))),
                   ),
                   const SizedBox(height: 16),
                   const Text(appInstansiUnit),

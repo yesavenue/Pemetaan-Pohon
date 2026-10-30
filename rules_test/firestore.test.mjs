@@ -358,3 +358,59 @@ for (const initialStatus of ['pending', 'verified']) {
     assert.equal((await getDoc(doc(database, 'public_trees/precise'))).exists(), false);
   });
 }
+
+const trackingToken = 'ab'.repeat(32);
+async function submitTracked(token = trackingToken) {
+  const database = db();
+  const batch = writeBatch(database);
+  const time = serverTimestamp();
+  batch.set(doc(database, 'tree_pruning_requests', token), pruning({createdAt: time, updatedAt: time}));
+  batch.set(doc(database, 'pruning_tracking', token), {requestNumber: 'REQ-000001', status: 'menunggu', createdAt: time, updatedAt: time});
+  batch.set(doc(database, 'pruning_tracking', token, 'events', 'submitted'), {status: 'menunggu', at: time});
+  await assertSucceeds(batch.commit());
+}
+
+test('tracking: anonymous sees safe projection but cannot list or read identity', async () => {
+  await submitTracked();
+  const data = (await assertSucceeds(getDoc(ref(null, `pruning_tracking/${trackingToken}`)))).data();
+  assert.deepEqual(Object.keys(data).sort(), ['createdAt', 'requestNumber', 'status', 'updatedAt']);
+  await assertFails(getDocs(collection(db(), 'pruning_tracking')));
+  await assertFails(getDoc(ref(null, `tree_pruning_requests/${trackingToken}`)));
+  const events = await assertSucceeds(getDocs(collection(db(), 'pruning_tracking', trackingToken, 'events')));
+  assert.equal(events.size, 1);
+});
+
+test('tracking: forged projection, extra private fields and anonymous changes rejected', async () => {
+  await submitTracked();
+  await assertFails(updateDoc(ref(null, `pruning_tracking/${trackingToken}`), {status: 'selesai'}));
+  await assertFails(updateDoc(ref('admin', `pruning_tracking/${trackingToken}`), {nik: '1234567890123456'}));
+  await assertFails(setDoc(ref(null, `pruning_tracking/${'cd'.repeat(32)}`), {requestNumber: 'REQ-000001', status: 'menunggu', createdAt: serverTimestamp(), updatedAt: serverTimestamp()}));
+  await assertFails(setDoc(ref(null, `pruning_tracking/${trackingToken}/events/forged`), {status: 'menunggu', at: serverTimestamp()}));
+});
+
+test('tracking: admin status transaction updates projection and immutable history', async () => {
+  await submitTracked();
+  const database = db('admin');
+  const batch = writeBatch(database);
+  const time = serverTimestamp();
+  batch.update(doc(database, 'tree_pruning_requests', trackingToken), {status: 'diproses', alasanPenolakan: '', updatedAt: time});
+  batch.update(doc(database, 'pruning_tracking', trackingToken), {status: 'diproses', updatedAt: time});
+  batch.set(doc(database, 'pruning_tracking', trackingToken, 'events', 'second'), {status: 'diproses', at: time});
+  await assertSucceeds(batch.commit());
+  assert.equal((await getDoc(ref(null, `pruning_tracking/${trackingToken}`))).data().status, 'diproses');
+  await assertFails(updateDoc(ref('admin', `pruning_tracking/${trackingToken}/events/submitted`), {status: 'selesai'}));
+});
+
+for (const token of ['abcdefgh234567xy', trackingToken]) {
+  test(`tracking: supports new and legacy code length ${token.length}`, async () => {
+    await submitTracked(token);
+    await assertSucceeds(getDoc(ref(null, `pruning_tracking/${token}`)));
+    await assertFails(getDoc(ref(null, `tree_pruning_requests/${token}`)));
+    await assertFails(getDocs(collection(db(), 'pruning_tracking')));
+  });
+}
+test('tracking: rejects short and malformed codes', async () => {
+  for (const token of ['abcdefgh', '0'.repeat(16), 'z'.repeat(64)]) {
+    await assertFails(getDoc(ref(null, `pruning_tracking/${token}`)));
+  }
+});
