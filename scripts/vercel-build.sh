@@ -15,7 +15,9 @@ export CI=true
 flutter config --no-analytics
 flutter --version
 flutter pub get
-flutter build web --release --dart-define=SURVEYOR_APP=false --base-href /
+flutter build web --release --dart-define=SURVEYOR_APP=false --base-href /app/
 
 test -f build/web/index.html
 test -f build/web/flutter_bootstrap.js
+node scripts/assemble-site.mjs
+node scripts/test-public-site.mjs

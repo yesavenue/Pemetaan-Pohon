@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:url_launcher/url_launcher.dart';
 import 'public/public_form_exit_guard.dart';
 
 import 'package:flutter/material.dart';
 
 import '../screens/login_screen.dart';
+import '../screens/auth_wrapper.dart';
 import '../screens/public_home_screen.dart';
 import '../screens/public_map_viewer_screen.dart';
 import '../screens/public_pruning_request_screen.dart';
@@ -42,6 +45,11 @@ Future<void> navigateToPublicPage(
   final guard = PublicFormExitScope.of(context);
   if (guard != null && !await guard.confirmExit()) return;
   if (!context.mounted) return;
+  if (page == PublicPage.beranda && kIsWeb &&
+      Uri.base.path.startsWith('/app/')) {
+    final opened = await launchUrl(Uri.base.resolve('/'), webOnlyWindowName: '_self');
+    if (opened || !context.mounted) return;
+  }
   final Widget target = switch (page) {
     PublicPage.beranda => const PublicHomeScreen(),
     PublicPage.peta => const PublicMapViewerScreen(),
@@ -414,6 +422,11 @@ class PublicNavbar extends StatelessWidget implements PreferredSizeWidget {
     final guard = PublicFormExitScope.of(context);
     if (guard != null && !await guard.confirmExit()) return;
     if (!context.mounted) return;
+    if (kIsWeb && Uri.base.path.startsWith('/app/')) {
+      await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+        builder: (_) => const AuthWrapper(showLogin: true)));
+      return;
+    }
     await showDialog<void>(
       context: context,
       builder: (_) => const LoginScreen(),

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b3554">
+  <meta name="description" content="Kenali kondisi dan sebaran pohon Kota Cirebon. Jelajahi peta pohon terverifikasi, ajukan perapihan, dan pantau permohonan Anda.">
+  <link rel="canonical" href="https://pemetaan-pohon.vercel.app/">
+  <meta property="og:title" content="Kenali pohonnya. Jaga kotanya.">
+  <meta property="og:description" content="Pemetaan pohon dan layanan permohonan perapihan Kota Cirebon.">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="id_ID">
+  <meta property="og:image" content="https://pemetaan-pohon.vercel.app/__HERO_DESKTOP__">
+  <title>Pemetaan Pohon Kota Cirebon</title>
+  <link rel="icon" type="image/png" sizes="64x64" href="/favicon-pohon.png">
+  <link rel="apple-touch-icon" href="/icons/Icon-180.png?v=pohon-1">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="__CSS__">
+  <script type="module" src="__JS__"></script>
+</head>
+<body>
+<a class="skip" href="#main">Lewati navigasi</a>
+<svg class="symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+  <symbol id="icon-tree" viewBox="0 0 24 24"><path d="m12 2 5 7h-3l5 7h-6v6h-2v-6H5l5-7H7z"/></symbol>
+  <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
+  <symbol id="icon-map" viewBox="0 0 24 24"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2zm6-2v16m6-14v16"/></symbol>
+  <symbol id="icon-check" viewBox="0 0 24 24"><path d="M3 3h18v18H3zm4 5h3m-3 5h3m3-2 2 2 4-4M7 17h10"/></symbol>
+  <symbol id="icon-chart" viewBox="0 0 24 24"><path d="M5 20v-8m7 8V4m7 16v-5" stroke-width="4"/></symbol>
+  <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></symbol>
+  <symbol id="icon-home" viewBox="0 0 24 24"><path d="m3 11 9-8 9 8M6 9v12h5v-6h3v6h4V9"/></symbol>
+  <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-11v2"/></symbol>
+  <symbol id="icon-login" viewBox="0 0 24 24"><path d="M10 3H4v18h6m-1-9h12m-5-5 5 5-5 5"/></symbol>
+</defs></svg>
+<header class="header" id="header">
+ <a href="/" class="brand" aria-label="Pemetaan Pohon Kota Cirebon — Beranda"><img src="__LOGO__" width="270" height="90" alt="Pemetaan Pohon Kota Cirebon"></a>
+ <a class="login" href="/app/#/login" aria-label="Masuk pengelola"><svg aria-hidden="true"><use href="#icon-login"/></svg><span>Masuk</span></a>
+</header>
+<main id="main">
+ <section class="hero" aria-labelledby="hero-title">
+  <picture><source media="(max-width: 699px)" srcset="__HERO_MOBILE__"><img class="hero-photo" src="__HERO_DESKTOP__" width="1920" height="1440" fetchpriority="high" decoding="async" alt="Kegiatan perawatan pohon di Kota Cirebon"></picture>
+  <div class="hero-shade"></div>
+  <div class="hero-content" id="hero-content">
+   <h1 id="hero-title">Kenali pohonnya.<br>Jaga kotanya.</h1>
+   <div class="hero-actions"><a class="button light" href="/app/#/peta"><svg aria-hidden="true"><use href="#icon-map"/></svg>Jelajahi Peta</a><a class="button" href="/app/#/permohonan"><svg aria-hidden="true"><use href="#icon-check"/></svg>Ajukan Permohonan</a></div>
+   <form class="tracking" id="tracking" action="/app/#/lacak" method="get">
+    <label class="sr-only" for="tracking-code">Kode akses permohonan</label><input id="tracking-code" placeholder="Lacak Permohonan" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="64" aria-describedby="tracking-error"><button type="submit" aria-label="Periksa status permohonan"><svg aria-hidden="true"><use href="#icon-search"/></svg></button>
+   </form>
+   <p id="tracking-error" class="tracking-error" role="status"></p>
+   <noscript><p><a href="/app/#/lacak">Buka halaman pelacakan</a> untuk memasukkan kode akses.</p></noscript>
+  </div>
+ </section>
+ <div class="container">
+  <nav id="akses-cepat" class="quick-actions" aria-label="Akses cepat">
+   <a class="action-card" href="#pohon"><svg aria-hidden="true"><use href="#icon-tree"/></svg><span><strong>Lihat kondisi pohon</strong><span>Jelajahi data pohon terverifikasi.</span></span><svg class="arrow" aria-hidden="true"><use href="#icon-arrow"/></svg></a>
+   <a class="action-card" href="#panduan"><svg aria-hidden="true"><use href="#icon-check"/></svg><span><strong>Persiapan permohonan</strong><span>Ketahui data dan foto yang diperlukan.</span></span><svg class="arrow" aria-hidden="true"><use href="#icon-arrow"/></svg></a>
+   <a class="action-card" href="/app/#/statistik"><svg aria-hidden="true"><use href="#icon-chart"/></svg><span><strong>Statistik kota</strong><span>Lihat ringkasan kondisi dan sebaran pohon.</span></span><svg class="arrow" aria-hidden="true"><use href="#icon-arrow"/></svg></a>
+  </nav>
+  <section id="pohon" class="section" aria-labelledby="tree-title">
+   <div class="section-heading"><div><p class="eyebrow">RUANG HIJAU KITA</p><h2 id="tree-title">Pohon yang sudah terpetakan</h2><p>Ringkasan data terverifikasi. Pilih kondisi untuk melihat sebarannya.</p></div><a class="text-link" href="/app/#/statistik">Lihat statistik <span aria-hidden="true">↗</span></a></div>
+   <div class="stats" aria-label="Filter kondisi pohon">
+    <button class="stat active" data-condition="all" aria-pressed="true"><span class="dot all"></span><span><strong data-count="all">—</strong><span>Pohon terpetakan</span></span></button>
+    <button class="stat" data-condition="sehat" aria-pressed="false"><span class="dot sehat"></span><span><strong data-count="sehat">—</strong><span>Sehat</span></span></button>
+    <button class="stat" data-condition="sakit" aria-pressed="false"><span class="dot sakit"></span><span><strong data-count="sakit">—</strong><span>Sakit</span></span></button>
+    <button class="stat" data-condition="rawanTumbang" aria-pressed="false"><span class="dot rawanTumbang"></span><span><strong data-count="rawanTumbang">—</strong><span>Rawan tumbang</span></span></button>
+   </div>
+   <div class="data-status"><p id="data-status" role="status">Data dimuat saat bagian ini terlihat.</p><button class="text-link" id="refresh-data" type="button">Perbarui data</button></div>
+   <div class="map-layout"><div class="map-copy"><h3>Kenali pohon<br> di sekitarmu.</h3><p>Lihat lokasi dan kondisi pohon sebelum mengajukan permohonan. Pilih penanda untuk membuka detail di peta lengkap.</p><a class="button outline" href="/app/#/peta">Buka peta lengkap <svg aria-hidden="true"><use href="#icon-arrow"/></svg></a></div><div class="map-panel"><div id="map" aria-label="Pratinjau sebaran pohon Kota Cirebon"></div><div class="map-placeholder" id="map-placeholder"><svg aria-hidden="true"><use href="#icon-map"/></svg><h3>Sebaran pohon Kota Cirebon</h3><p>Aktifkan peta untuk menjelajahi lokasi pohon.</p><button class="button" id="activate-map" type="button">Aktifkan peta</button><p id="map-status" role="status"></p></div></div></div>
+   <noscript><p>Aktifkan JavaScript untuk ringkasan interaktif, atau <a href="/app/#/peta">buka aplikasi peta</a>.</p></noscript>
+  </section>
+  <section class="section guide" id="panduan" aria-labelledby="guide-title">
+   <div><p class="eyebrow">LAYANAN WARGA</p><h2 id="guide-title">Bagaimana mengajukan permohonan?</h2><p>Siapkan informasi yang tepat agar permohonan dapat ditinjau.</p></div>
+   <ol class="steps"><li><span class="step-number">01</span><h3>Siapkan data</h3><p>Siapkan nama, alamat pemohon, nomor HP, email, dan NIK untuk verifikasi permohonan.</p></li><li><span class="step-number">02</span><h3>Tentukan pohon</h3><p>Lengkapi alamat pohon, kecamatan, kelurahan, dan titik lokasi. Sertakan foto pohon, foto KTP, serta alasan permohonan.</p></li><li><span class="step-number">03</span><h3>Kirim &amp; pantau</h3><p>Periksa isian dan simpan bukti serta kode akses 16 karakter. Kode lama tetap berlaku. Pengajuan belum berarti perapihan disetujui.</p></li></ol>
+   <div class="guide-actions"><a class="button" href="/app/#/permohonan">Mulai permohonan <svg aria-hidden="true"><use href="#icon-arrow"/></svg></a><a class="text-link" href="/app/#/lacak">Sudah mengajukan? Lacak status</a></div>
+  </section>
+  <section class="about section" id="tentang"><div><p class="eyebrow">POHON CIREBON</p><h2>Satu kota.<br>Ruang hijau bersama.</h2></div><div><p>Kenali sebaran pohon dan ikut merawat lingkungan di sekitar kita. Peta publik menampilkan pohon yang telah diverifikasi oleh pengelola.</p><a class="text-link" href="/app/#/tentang">Tentang pemetaan pohon <span aria-hidden="true">→</span></a></div></section>
+ </div>
+</main>
+<footer><div class="container footer-inner"><div><img src="__LOGO__" width="270" height="90" alt="Pemetaan Pohon Kota Cirebon" loading="lazy"><p>UPT Pertamanan dan Pemakaman<br>DPRKP Kota Cirebon</p><p>Kota Cirebon, Jawa Barat</p><a class="text-link" href="https://maps.app.goo.gl/nKEHVYKCNbQTzErs8" target="_blank" rel="noopener noreferrer">Lokasi kantor ↗</a></div><div><h2>Mengenali pohon,<br>merawat ruang hijau bersama.</h2><nav aria-label="Tautan layanan"><a href="/app/#/peta">Peta pohon</a><a href="/app/#/permohonan">Ajukan permohonan</a><a href="/app/#/lacak">Lacak permohonan</a><a href="/app/#/login">Masuk pengelola</a></nav></div></div></footer>
+<nav class="bottom-nav" aria-label="Navigasi utama"><a href="/" aria-current="page"><svg aria-hidden="true"><use href="#icon-home"/></svg>Beranda</a><a href="/app/#/peta"><svg aria-hidden="true"><use href="#icon-map"/></svg>Peta</a><a href="/app/#/statistik"><svg aria-hidden="true"><use href="#icon-chart"/></svg>Statistik</a><a href="/app/#/permohonan"><svg aria-hidden="true"><use href="#icon-check"/></svg>Ajukan</a><a href="#tentang"><svg aria-hidden="true"><use href="#icon-info"/></svg>Tentang</a></nav>
+<script type="application/json" id="public-config">__CONFIG__</script>
+</body>
+</html>

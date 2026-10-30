@@ -10,7 +10,8 @@ import 'login_screen.dart';
 import '../utils/app_mode.dart';
 
 class AuthWrapper extends StatefulWidget {
-  const AuthWrapper({super.key});
+  final bool showLogin;
+  const AuthWrapper({super.key, this.showLogin = false});
   @override
   State<AuthWrapper> createState() => _AuthWrapperState();
 }
@@ -31,7 +32,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
       if (snapshot.connectionState == ConnectionState.waiting) return const _Loading();
       final user = snapshot.data;
       if (user == null) {
-        return isSurveyorApp
+        return (isSurveyorApp || widget.showLogin)
           ? const LoginScreen(standalone: true) : const PublicHomeScreen();
       }
       return _ProfileGate(key: ValueKey(user.uid), user: user, auth: _auth);

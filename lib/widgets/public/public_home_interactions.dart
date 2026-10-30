@@ -104,9 +104,25 @@ class PublicQuickActions extends StatelessWidget {
       (Icons.fact_check_outlined, 'Persiapan permohonan', 'Ketahui data dan foto yang diperlukan.', onGuide),
       (Icons.bar_chart_rounded, 'Statistik kota', 'Lihat ringkasan kondisi dan sebaran pohon.', onStatistics),
     ];
+    final cards = [
+      for (final item in items) _ActionCard(
+        icon: item.$1, title: item.$2, description: item.$3, onTap: item.$4),
+    ];
+    if (columns == 3) {
+      // Three small cards: size the row to its tallest content, without clipping
+      // longer descriptions or fixing a height that breaks text scaling.
+      return IntrinsicHeight(child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < cards.length; i++) ...[
+            if (i > 0) const SizedBox(width: 16),
+            Expanded(child: cards[i]),
+          ],
+        ],
+      ));
+    }
     return Wrap(spacing: 16, runSpacing: 12, children: [
-      for (final item in items) SizedBox(width: width, child: _ActionCard(
-        icon: item.$1, title: item.$2, description: item.$3, onTap: item.$4)),
+      for (final card in cards) SizedBox(width: width, child: card),
     ]);
   });
 }
@@ -138,9 +154,9 @@ class _ActionCardState extends State<_ActionCard> {
           child: Container(padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(borderRadius: BorderRadius.circular(20),
               border: Border.all(color: active ? PublicUi.green : PublicUi.border)),
-            child: Row(children: [
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Icon(widget.icon, size: 28, color: PublicUi.green), const SizedBox(width: 16),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w700, color: PublicUi.ink)),
                 const SizedBox(height: 6), Text(widget.description, style: const TextStyle(color: PublicUi.muted, fontSize: 13)),
               ])),
