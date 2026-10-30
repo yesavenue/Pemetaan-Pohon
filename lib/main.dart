@@ -24,12 +24,10 @@ class MyApp extends StatelessWidget {
           : 'Pemetaan Pohon Kota Cirebon',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
-      // Resolve only the explicitly supported public entry links. The role gate
-      // remains inside AuthWrapper; URL values never grant admin access.
-      onGenerateInitialRoutes: (_) => [MaterialPageRoute<void>(
-        builder: (_) => isSurveyorApp
-            ? const AuthWrapper() : publicEntry(Uri.base),
-      )],
+      initialRoute: '/',
+      home: isSurveyorApp
+          ? const AuthWrapper()
+          : publicEntry(Uri.base),
     );
   }
 }
